@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.git/
+.fly/
+.pytest_cache/
+*.md
+.vs/
+*.save
+*.bak
+
