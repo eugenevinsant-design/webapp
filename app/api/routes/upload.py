@@ -40,7 +40,7 @@ def _safe_filename(name: str) -> str:
     return safe[:128]
 
 
-@router.post("/upload")
+@router.post("")
 async def upload_signal(
     file: UploadFile = File(...),
     fs: float | None = Form(None),
@@ -111,7 +111,7 @@ async def upload_signal(
     return {"status": "ok", "message": "Файл загружен", "signal": meta}
 
 
-@router.get("/uploads")
+@router.get("/list")
 async def list_uploads() -> List[dict]:
     """Список загруженных CSV/TXT файлов в data/uploads/."""
     items = []
@@ -128,7 +128,7 @@ async def list_uploads() -> List[dict]:
     return items
 
 
-@router.delete("/uploads/{upload_id}")
+@router.delete("/{upload_id}")
 async def delete_upload(upload_id: str):
     """Удалить загруженный файл по upload_id."""
     for path in UPLOADS_DIR.glob(f"{upload_id}_*"):

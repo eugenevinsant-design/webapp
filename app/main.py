@@ -27,7 +27,7 @@ app.add_middleware(
 
 # Роуты API
 app.include_router(ecg.router, prefix="/api/ecg", tags=["ECG"])
-app.include_router(upload.router, prefix="/api/ecg", tags=["Upload"])
+app.include_router(upload.router, prefix="/api/upload", tags=["Upload"])
 
 # Служебные эндпоинты — ДО монтирования статики
 @app.get("/health")
