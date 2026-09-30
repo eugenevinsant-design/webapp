@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import logging
 import os
 
-from app.api.routes import ecg
+from app.api.routes import ecg, upload
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ app.add_middleware(
 
 # Роуты API
 app.include_router(ecg.router, prefix="/api/ecg", tags=["ECG"])
+app.include_router(upload.router, prefix="/api/ecg", tags=["Upload"])
 
 # Служебные эндпоинты — ДО монтирования статики
 @app.get("/health")
