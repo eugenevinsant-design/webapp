@@ -16,16 +16,29 @@ class SignalStatus(str, Enum):
     FAILED = "failed"
 
 
+class SourceType(str, Enum):
+    WFDB = "wfdb"
+    CSV = "csv"
+    TXT = "txt"
+
+
 class ECGSignal(BaseModel):
     id: int
     name: str
     file_name: str
     file_path: str
-    mat_file: Optional[str] = None          # было dat_file — синхронизировано с ecg_loader.py
+
+    source_type: SourceType = SourceType.WFDB
+    mat_file: Optional[str] = None
+    upload_id: Optional[str] = None
+
     fs: Optional[float] = None
     n_sig: Optional[int] = None
+    sig_len: Optional[int] = None
     duration: Optional[float] = None
     size_kb: Optional[float] = None
+    channels: Optional[List[str]] = None
+
     signal_type: SignalType = SignalType.ECG
 
 
