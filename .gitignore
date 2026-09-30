@@ -10,3 +10,10 @@ __pycache__/
 *.bak
 *~
 
+
+# Загруженные пользователем файлы (не коммитим)
+data/uploads/*.csv
+data/uploads/*.txt
+data/uploads/*.hea
+data/uploads/*.mat
+!data/uploads/.gitkeep
