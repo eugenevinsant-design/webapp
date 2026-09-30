@@ -3,191 +3,324 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>❤️ ECG Analyzer Pro</title>
+    <title>❤️ ECG Analyzer</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>❤️</text></svg>">
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-    <div class="app">
-        <!-- ============================================
-             БОКОВОЕ МЕНЮ
-             ============================================ -->
-        <aside class="sidebar">
-            <div class="sidebar-logo">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="2 12 6 12 8 5 11 18 14 8 16 15 18 12 22 12"/>
-                </svg>
-                <span>ECG Analyzer</span>
-            </div>
+<div class="app">
 
-            <nav class="sidebar-nav">
-                <a href="#" class="active" data-page="signals">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h6"/><path d="M8 16h4"/>
-                    </svg>
-                    <span>Сигналы</span>
-                </a>
-                <a href="#" data-page="chat">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                    <span>Чат</span>
-                </a>
-                <a href="#" data-page="history">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                    </svg>
-                    <span>История</span>
-                </a>
-                <a href="#" data-page="analytics">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
-                    </svg>
-                    <span>Аналитика</span>
-                </a>
-                <a href="#" data-page="settings">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                    </svg>
-                    <span>Настройки</span>
-                </a>
-            </nav>
+    <!-- ================================================== -->
+    <!-- SIDEBAR -->
+    <!-- ================================================== -->
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="2 12 6 12 8 5 11 18 14 8 16 15 18 12 22 12"/>
+            </svg>
+            <span>ECG Analyzer</span>
+        </div>
 
-            <div class="sidebar-footer">
-                <button id="exportChatBtn" class="btn-export">📤 Экспорт чата</button>
-                <div class="status-badge">
-                    <span class="dot" id="statusDot"></span>
-                    <span id="statusText">Подключение...</span>
-                </div>
-            </div>
-        </aside>
+        <nav class="sidebar-nav">
+            <a href="#" class="active" data-page="overview">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9"/><path d="M5 10v10h14V10"/></svg>
+                <span>Обзор</span>
+            </a>
+            <a href="#" data-page="signals">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h6"/><path d="M8 16h4"/></svg>
+                <span>Сигналы</span>
+            </a>
+            <a href="#" data-page="upload">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Загрузка</span>
+            </a>
+            <a href="#" data-page="chat">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span>Чат</span>
+            </a>
+            <a href="#" data-page="history">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span>История</span>
+            </a>
+            <a href="#" data-page="analytics">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                <span>Аналитика</span>
+            </a>
+            <a href="#" data-page="settings">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span>Настройки</span>
+            </a>
+        </nav>
 
-        <!-- ============================================
-             ОСНОВНОЙ КОНТЕНТ
-             ============================================ -->
-        <main class="main-content">
-
-            <!-- СТРАНИЦА: СИГНАЛЫ -->
-            <section id="page-signals" class="page active">
-                <header class="page-header">
-                    <h1>📋 ЭКГ Сигналы</h1>
-                    <div class="page-actions">
-                        <button id="refreshBtn" class="btn btn-primary">🔄 Обновить</button>
-                        <button id="reloadBtn" class="btn btn-secondary">📂 Пересканировать</button>
-                        <span id="countBadge" class="badge">0</span>
-                    </div>
-                </header>
-                <div id="signalList" class="signal-grid"></div>
-            </section>
-
-            <!-- СТРАНИЦА: ЧАТ -->
-            <section id="page-chat" class="page">
-                <header class="page-header">
-                    <h1>💬 Чат с AI</h1>
-                    <span class="badge" id="chatModelBadge">Модель: ECG-Analyzer-v1.0</span>
-                </header>
-
-                <div class="chat-container">
-                    <div class="chat-messages" id="chatMessages">
-                        <div class="chat-welcome">
-                            <span class="chat-welcome-icon">🧠</span>
-                            <h3>Добро пожаловать в ECG Analyzer!</h3>
-                            <p>Выберите сигнал из списка или задайте вопрос об анализе ЭКГ.</p>
-                        </div>
-                    </div>
-                    <div class="chat-input-area">
-                        <textarea id="chatInput" placeholder="Введите вопрос об ЭКГ сигнале..." rows="2"></textarea>
-                        <button id="chatSendBtn" class="btn btn-primary">📤 Отправить</button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- СТРАНИЦА: ИСТОРИЯ -->
-            <section id="page-history" class="page">
-                <header class="page-header">
-                    <h1>📜 История анализов</h1>
-                    <button id="clearHistoryBtn" class="btn btn-secondary">🗑️ Очистить</button>
-                </header>
-                <div id="historyList" class="history-list"></div>
-            </section>
-
-            <!-- СТРАНИЦА: АНАЛИТИКА -->
-            <section id="page-analytics" class="page">
-                <header class="page-header">
-                    <h1>📊 Аналитика</h1>
-                </header>
-                <div class="analytics-grid">
-                    <div class="analytics-card">
-                        <h3>Всего сигналов</h3>
-                        <div class="analytics-value" id="totalSignals">0</div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>Аномалий обнаружено</h3>
-                        <div class="analytics-value" id="totalAnomalies">0</div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>Среднее качество</h3>
-                        <div class="analytics-value" id="avgQuality">—</div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>Анализов выполнено</h3>
-                        <div class="analytics-value" id="totalAnalyses">0</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- СТРАНИЦА: НАСТРОЙКИ -->
-            <section id="page-settings" class="page">
-                <header class="page-header">
-                    <h1>⚙️ Настройки</h1>
-                </header>
-                <div class="settings-grid">
-                    <div class="settings-card">
-                        <h3>Папка с сигналами</h3>
-                        <p><code>./data/signals</code></p>
-                    </div>
-                    <div class="settings-card">
-                        <h3>API Сервер</h3>
-                        <p><code id="apiUrl">http://localhost:8000</code></p>
-                    </div>
-                    <div class="settings-card">
-                        <h3>Модель</h3>
-                        <p>ECG-Analyzer-v1.0</p>
-                    </div>
-                    <div class="settings-card">
-                        <h3>Форматы</h3>
-                        <p>.hea + .mat</p>
-                    </div>
-                </div>
-            </section>
-
-        </main>
-    </div>
-
-    <!-- ============================================
-         МОДАЛЬНОЕ ОКНО ОТЧЁТА
-         ============================================ -->
-    <div id="reportModal" class="modal" style="display:none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>📄 Отчёт по анализу</h2>
-                <button id="closeReportBtn" class="btn-close">✕</button>
-            </div>
-            <div id="reportContent" class="modal-body markdown-body"></div>
-            <div class="modal-footer">
-                <button id="exportReportBtn" class="btn btn-primary" disabled>📥 Скачать отчёт</button>
+        <div class="sidebar-footer">
+            <button id="exportChatBtn" class="btn-export">📤 Экспорт чата</button>
+            <div class="status-badge">
+                <span class="dot" id="statusDot"></span>
+                <span id="statusText">Подключение...</span>
             </div>
         </div>
+    </aside>
+
+    <!-- ================================================== -->
+    <!-- MAIN -->
+    <!-- ================================================== -->
+    <main class="main-content">
+
+        <!-- ==================== ОБЗОР ==================== -->
+        <section id="page-overview" class="page active">
+            <header class="page-header">
+                <div>
+                    <h1>Обзор</h1>
+                    <p class="page-subtitle">Сводка по вашим ЭКГ-сигналам и анализам</p>
+                </div>
+                <div class="page-actions">
+                    <button id="overviewReloadBtn" class="btn btn-secondary">📂 Пересканировать</button>
+                </div>
+            </header>
+
+            <!-- Метрики -->
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Всего сигналов</span>
+                        <span class="metric-icon">❤️</span>
+                    </div>
+                    <div class="metric-value" id="metricSignals">0</div>
+                    <div class="metric-sub">WFDB + CSV/TXT</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Анализов</span>
+                        <span class="metric-icon">🔬</span>
+                    </div>
+                    <div class="metric-value" id="metricAnalyses">0</div>
+                    <div class="metric-sub">выполнено</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Аномалий</span>
+                        <span class="metric-icon">⚠️</span>
+                    </div>
+                    <div class="metric-value" id="metricAnomalies">0</div>
+                    <div class="metric-sub">обнаружено</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-header">
+                        <span class="metric-label">Среднее качество</span>
+                        <span class="metric-icon">📊</span>
+                    </div>
+                    <div class="metric-value" id="metricQuality">—</div>
+                    <div class="metric-sub">по всем анализам</div>
+                </div>
+            </div>
+
+            <!-- График + список -->
+            <div class="overview-grid">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Сигналы</h3>
+                        <button class="btn-link" onclick="App.goto('signals')">Все →</button>
+                    </div>
+                    <div id="overviewSignalList" class="overview-signal-list">
+                        <p class="muted">Загрузка...</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>AI-анализ сигнала</h3>
+                    </div>
+                    <div class="ai-cta">
+                        <p>Выберите сигнал и запустите анализ одним кликом.</p>
+                        <button class="btn btn-primary" onclick="App.goto('signals')">Перейти к сигналам</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== СИГНАЛЫ ==================== -->
+        <section id="page-signals" class="page">
+            <header class="page-header">
+                <h1>Сигналы</h1>
+                <div class="page-actions">
+                    <button id="refreshBtn" class="btn btn-primary">🔄 Обновить</button>
+                    <button id="reloadBtn" class="btn btn-secondary">📂 Пересканировать</button>
+                    <span id="countBadge" class="badge">0</span>
+                </div>
+            </header>
+            <div id="signalList" class="signal-grid"></div>
+        </section>
+
+        <!-- ==================== ЗАГРУЗКА ==================== -->
+        <section id="page-upload" class="page">
+            <header class="page-header">
+                <h1>Загрузка сигналов</h1>
+                <p class="page-subtitle">CSV / TXT, до 300 МБ, 1–32 канала</p>
+            </header>
+
+            <div class="upload-grid">
+                <div class="card">
+                    <h3>Файл</h3>
+
+                    <div id="dropzone" class="dropzone">
+                        <div class="dropzone-icon">📥</div>
+                        <div id="dropzoneHint" class="dropzone-hint">Перетащите файл сюда или нажмите для выбора</div>
+                        <div id="dropzoneFilename" class="dropzone-filename"></div>
+                        <input type="file" id="fileInput" accept=".csv,.txt,.hea,.mat" hidden>
+                    </div>
+
+                    <div class="form-row">
+                        <label>Частота (Гц)</label>
+                        <input type="number" id="uploadFs" placeholder="500 (по умолчанию)" min="1" max="10000">
+                    </div>
+
+                    <div class="form-row">
+                        <label>Имя сигнала</label>
+                        <input type="text" id="uploadName" placeholder="например, patient_01">
+                    </div>
+
+                    <div class="form-actions">
+                        <button id="uploadBtn" class="btn btn-primary" disabled>⬆️ Загрузить</button>
+                    </div>
+
+                    <div id="uploadProgress" class="progress-wrap" style="display:none;">
+                        <div class="progress">
+                            <div id="uploadProgressBar" class="progress-bar"></div>
+                        </div>
+                        <div id="uploadProgressText" class="progress-text">0%</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Загруженные файлы</h3>
+                        <button id="refreshUploadsBtn" class="btn-link">Обновить</button>
+                    </div>
+                    <div id="uploadedList" class="uploaded-list">
+                        <div class="empty-state">
+                            <span class="empty-icon">📂</span>
+                            <p>Пока ничего не загружено</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== ЧАТ ==================== -->
+        <section id="page-chat" class="page">
+            <header class="page-header">
+                <h1>Чат с AI</h1>
+                <span class="badge">ECG-Analyzer-v1.0</span>
+            </header>
+
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-welcome">
+                        <span class="chat-welcome-icon">🧠</span>
+                        <h3>Добро пожаловать!</h3>
+                        <p>Выберите сигнал или задайте вопрос.</p>
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <textarea id="chatInput" placeholder="Введите вопрос..." rows="2"></textarea>
+                    <button id="chatSendBtn" class="btn btn-primary">📤</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== ИСТОРИЯ ==================== -->
+        <section id="page-history" class="page">
+            <header class="page-header">
+                <h1>История анализов</h1>
+                <button id="clearHistoryBtn" class="btn btn-secondary">🗑️ Очистить</button>
+            </header>
+            <div id="historyList" class="history-list"></div>
+        </section>
+
+        <!-- ==================== АНАЛИТИКА ==================== -->
+        <section id="page-analytics" class="page">
+            <header class="page-header">
+                <h1>Аналитика</h1>
+            </header>
+            <div class="analytics-grid">
+                <div class="analytics-card">
+                    <h3>Всего сигналов</h3>
+                    <div class="analytics-value" id="totalSignals">0</div>
+                </div>
+                <div class="analytics-card">
+                    <h3>Аномалий обнаружено</h3>
+                    <div class="analytics-value" id="totalAnomalies">0</div>
+                </div>
+                <div class="analytics-card">
+                    <h3>Среднее качество</h3>
+                    <div class="analytics-value" id="avgQuality">—</div>
+                </div>
+                <div class="analytics-card">
+                    <h3>Анализов выполнено</h3>
+                    <div class="analytics-value" id="totalAnalyses">0</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== НАСТРОЙКИ ==================== -->
+        <section id="page-settings" class="page">
+            <header class="page-header">
+                <h1>Настройки</h1>
+            </header>
+            <div class="settings-grid">
+                <div class="settings-card">
+                    <h3>Папка с WFDB</h3>
+                    <p><code>./data/signals</code></p>
+                </div>
+                <div class="settings-card">
+                    <h3>Папка с загрузками</h3>
+                    <p><code>./data/uploads</code></p>
+                </div>
+                <div class="settings-card">
+                    <h3>API Сервер</h3>
+                    <p><code id="apiUrl">http://localhost:8000</code></p>
+                </div>
+                <div class="settings-card">
+                    <h3>Модель</h3>
+                    <p>ECG-Analyzer-v1.0</p>
+                </div>
+                <div class="settings-card">
+                    <h3>Максимум файла</h3>
+                    <p>300 МБ</p>
+                </div>
+                <div class="settings-card">
+                    <h3>Форматы</h3>
+                    <p>.hea + .mat, .csv, .txt</p>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</div>
+
+<!-- МОДАЛКА ОТЧЁТА -->
+<div id="reportModal" class="modal" style="display:none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>📄 Отчёт по анализу</h2>
+            <button id="closeReportBtn" class="btn-close">✕</button>
+        </div>
+        <div id="reportContent" class="modal-body markdown-body"></div>
+        <div class="modal-footer">
+            <button id="exportReportMdBtn" class="btn btn-secondary" disabled>📥 Скачать .md</button>
+            <button id="exportReportTxtBtn" class="btn btn-primary" disabled>📄 Скачать .txt</button>
+        </div>
     </div>
+</div>
 
-    <!-- Тосты -->
-    <div id="messages" class="messages" aria-live="polite" aria-atomic="true"></div>
+<!-- Тосты -->
+<div id="toastContainer" class="toast-container" aria-live="polite"></div>
+<div id="messages" class="messages"></div>
 
-    <!-- ============================================
-         СКРИПТЫ
-         ============================================ -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="/js/scripts.js"></script>
+<!-- Скрипты -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/js/charts.js"></script>
+<script src="/js/upload.js"></script>
+<script src="/js/scripts.js"></script>
 </body>
 </html>

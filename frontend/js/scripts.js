@@ -1,7 +1,9 @@
 // ============================================
-// НАСТРОЙКИ
+// SCRIPTS.JS — основная логика ECG Analyzer
 // ============================================
-const API_BASE = '/api/ecg';
+
+const API_BASE = '/api';
+const ECG_BASE = '/api/ecg';
 const STORAGE_KEY = 'ecg_analyzer_history_v1';
 
 // ============================================
@@ -9,8 +11,8 @@ const STORAGE_KEY = 'ecg_analyzer_history_v1';
 // ============================================
 let currentSignals = [];
 let selectedSignalId = null;
-let chatHistory = [];          // {type, content, time}
-let analysisHistory = [];      // {id, signal_name, date, report, quality_score, anomalies_count}
+let chatHistory = [];
+let analysisHistory = [];
 let currentTaskId = null;
 let refreshInterval = null;
 let lastSignalsHash = '';
@@ -18,23 +20,68 @@ let lastSignalsHash = '';
 // ============================================
 // DOM ЭЛЕМЕНТЫ
 // ============================================
-const signalList       = document.getElementById('signalList');
-const statusDot        = document.getElementById('statusDot');
-const statusText       = document.getElementById('statusText');
-const countBadge       = document.getElementById('countBadge');
-const messages         = document.getElementById('messages');
-const chatMessages     = document.getElementById('chatMessages');
-const chatInput        = document.getElementById('chatInput');
-const chatSendBtn      = document.getElementById('chatSendBtn');
-const historyList      = document.getElementById('historyList');
-const reportModal      = document.getElementById('reportModal');
-const reportContent    = document.getElementById('reportContent');
-const refreshBtn       = document.getElementById('refreshBtn');
-const reloadBtn        = document.getElementById('reloadBtn');
-const exportChatBtn    = document.getElementById('exportChatBtn');
-const clearHistoryBtn  = document.getElementById('clearHistoryBtn');
-const closeReportBtn   = document.getElementById('closeReportBtn');
-const exportReportBtn  = document.getElementById('exportReportBtn');
+const $ = (id) => document.getElementById(id);
+
+const signalList       = $('signalList');
+const statusDot        = $('statusDot');
+const statusText       = $('statusText');
+const countBadge       = $('countBadge');
+const messages         = $('messages');
+const chatMessages     = $('chatMessages');
+const chatInput        = $('chatInput');
+const chatSendBtn      = $('chatSendBtn');
+const historyList      = $('historyList');
+const reportModal      = $('reportModal');
+const reportContent    = $('reportContent');
+const refreshBtn       = $('refreshBtn');
+const reloadBtn        = $('reloadBtn');
+const exportChatBtn    = $('exportChatBtn');
+const clearHistoryBtn  = $('clearHistoryBtn');
+const closeReportBtn   = $('closeReportBtn');
+const exportReportMd   = $('exportReportMdBtn');
+const exportReportTxt  = $('exportReportTxtBtn');
+const overviewSignalList = $('overviewSignalList');
+const overviewReloadBtn  = $('overviewReloadBtn');
+
+// ============================================
+// TOAST — уведомления
+// ============================================
+const Toast = (() => {
+    const container = document.getElementById('toastContainer');
+
+    function show(text, type = 'info', duration = 3500) {
+        if (!container) return;
+        const el = document.createElement('div');
+        el.className = `toast toast-${type}`;
+        el.textContent = text;
+        container.appendChild(el);
+
+        // Ограничим количество
+        while (container.children.length > 5) {
+            container.removeChild(container.firstChild);
+        }
+
+        setTimeout(() => {
+            el.style.opacity = '0';
+            el.style.transition = 'opacity 0.4s';
+            setTimeout(() => el.remove(), 400);
+        }, duration);
+    }
+
+    return { show };
+})();
+
+// ============================================
+// APP — навигация и API-инфо
+// ============================================
+const App = (() => {
+    function goto(pageName) {
+        const link = document.querySelector(`.sidebar-nav a[data-page="${pageName}"]`);
+        if (link) link.click();
+    }
+
+    return { goto };
+})();
 
 // ============================================
 // УТИЛИТЫ
@@ -47,7 +94,7 @@ function escapeHtml(s) {
 
 function renderMarkdown(text) {
     if (typeof marked !== 'undefined' && marked && typeof marked.parse === 'function') {
-        try { return marked.parse(text); } catch (e) { /* fallthrough */ }
+        try { return marked.parse(text); } catch (e) {}
     }
     return escapeHtml(text);
 }
@@ -60,11 +107,7 @@ function nowTime() {
 // LOCAL STORAGE
 // ============================================
 function saveHistory() {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(analysisHistory));
-    } catch (e) {
-        console.warn('Не удалось сохранить историю:', e);
-    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(analysisHistory)); } catch (e) {}
 }
 
 function restoreHistory() {
@@ -73,9 +116,7 @@ function restoreHistory() {
         if (!raw) return;
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) analysisHistory = parsed;
-    } catch (e) {
-        console.warn('Не удалось восстановить историю:', e);
-    }
+    } catch (e) {}
 }
 
 // ============================================
@@ -95,41 +136,38 @@ document.querySelectorAll('.sidebar-nav a').forEach(link => {
 
         if (page === 'history') loadHistory();
         if (page === 'analytics') updateAnalytics();
+        if (page === 'upload' && window.Upload) Upload.loadUploaded();
+        if (page === 'overview') loadOverview();
     });
 });
 
 // ============================================
-// ОСНОВНЫЕ ФУНКЦИИ
+// СИГНАЛЫ
 // ============================================
 async function loadSignals() {
     try {
         setStatus('loading', 'Загрузка...');
 
-        const response = await fetch(`${API_BASE}/`);
+        const response = await fetch(`${ECG_BASE}/`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const signals = await response.json();
+        currentSignals = signals;
 
-        // Не перерисовываем, если ничего не изменилось
         const newHash = JSON.stringify(signals);
         if (newHash !== lastSignalsHash) {
-            currentSignals = signals;
             lastSignalsHash = newHash;
-            renderSignals(currentSignals);
-        } else {
-            currentSignals = signals; // на случай, если пришли те же данные, но с другим порядком
+            renderSignals(signals);
+            if (overviewSignalList) renderOverviewSignals(signals);
         }
 
-        updateCount(currentSignals.length);
-        setStatus('online', `Готово (${currentSignals.length})`);
+        updateCount(signals.length);
+        setStatus('online', `Готово (${signals.length})`);
         updateAnalytics();
 
-        console.log('📊 Загружено сигналов:', currentSignals.length);
-
     } catch (error) {
-        console.error('❌ Ошибка загрузки:', error);
-        setStatus('offline', 'Ошибка подключения');
-        showMessage('error', '❌ Не удалось загрузить сигналы. Проверьте сервер.');
+        console.error('Ошибка загрузки:', error);
+        setStatus('offline', 'Ошибка');
         renderSignals([]);
     }
 }
@@ -137,58 +175,107 @@ async function loadSignals() {
 async function reloadSignals() {
     try {
         setStatus('loading', 'Пересканирование...');
-        showMessage('info', '🔍 Пересканирование папки...');
-
-        const response = await fetch(`${API_BASE}/reload`, { method: 'POST' });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        lastSignalsHash = '';   // форсируем перерисовку
+        await fetch(`${ECG_BASE}/reload`, { method: 'POST' });
+        lastSignalsHash = '';
         await loadSignals();
-        showMessage('success', '✅ Папка пересканирована');
-
-    } catch (error) {
-        console.error('❌ Ошибка пересканирования:', error);
-        showMessage('error', '❌ Ошибка пересканирования');
-        setStatus('offline', 'Ошибка');
+        Toast.show('✅ Папка пересканирована', 'success');
+    } catch (e) {
+        Toast.show('❌ Ошибка пересканирования', 'error');
     }
 }
 
 // ============================================
-// РЕНДЕРИНГ
+// РЕНДЕР СИГНАЛОВ
 // ============================================
 function renderSignals(signals) {
+    if (!signalList) return;
+
     if (!signals || signals.length === 0) {
         signalList.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">📂</span>
-                <p>Нет ЭКГ сигналов</p>
-                <small>Положите <code>.hea</code> и <code>.mat</code> файлы в папку <code>data/signals</code></small>
+                <p>Нет сигналов</p>
+                <small>Загрузите CSV/TXT или положите .hea/.mat в data/signals</small>
             </div>
         `;
         return;
     }
 
     signalList.innerHTML = signals.map(signal => {
-        const typeLabel = signal.signal_type === 'ecg' ? 'ЭКГ' : 'Вибрация';
-        const typeClass = signal.signal_type === 'ecg' ? 'ecg' : 'vibration';
-        const icon      = signal.signal_type === 'ecg' ? '❤️' : '📳';
-        const safeName  = escapeHtml(signal.name || signal.file_name || `#${signal.id}`);
+        const isCsv = signal.source_type === 'csv' || signal.source_type === 'txt';
+        const icon = isCsv ? '📄' : '❤️';
+        const badge = isCsv ? 'CSV' : 'WFDB';
+        const badgeClass = isCsv ? 'csv' : 'wfdb';
+        const name = escapeHtml(signal.name || signal.file_name || `#${signal.id}`);
+        const channels = signal.channels ? signal.channels.slice(0, 3).join(', ') : '';
 
         return `
             <div class="signal-card ${selectedSignalId === signal.id ? 'selected' : ''}"
                  onclick="selectSignal(${signal.id})">
-                <span class="icon">${icon}</span>
-                <div class="name">${safeName}</div>
-                <span class="badge-type ${typeClass}">${typeLabel}</span>
-                <div class="meta">
-                    <span>${signal.fs ? signal.fs + ' Hz' : '—'}</span>
-                    <span>${signal.n_sig ? signal.n_sig + ' каналов' : '—'}</span>
-                    <span>${signal.duration ? signal.duration.toFixed(1) + ' с' : '—'}</span>
+                <div class="signal-card-top">
+                    <span class="signal-icon">${icon}</span>
+                    <span class="signal-badge ${badgeClass}">${badge}</span>
                 </div>
-                <div class="size">📄 ${signal.size_kb || 0} KB</div>
+                <div class="signal-name">${name}</div>
+                <div class="signal-meta">
+                    <span>${signal.fs ? signal.fs + ' Гц' : '—'}</span>
+                    <span>${signal.n_sig ? signal.n_sig + ' кан.' : '—'}</span>
+                    <span>${signal.duration ? signal.duration.toFixed(2) + ' с' : '—'}</span>
+                </div>
+                ${channels ? `<div class="signal-channels">${escapeHtml(channels)}${signal.channels.length > 3 ? '…' : ''}</div>` : ''}
+                <div class="signal-size">📄 ${signal.size_kb || 0} KB</div>
             </div>
         `;
     }).join('');
+}
+
+function renderOverviewSignals(signals) {
+    if (!overviewSignalList) return;
+
+    if (!signals || signals.length === 0) {
+        overviewSignalList.innerHTML = '<p class="muted">Нет сигналов</p>';
+        return;
+    }
+
+    const top = signals.slice(0, 5);
+    overviewSignalList.innerHTML = top.map(sig => {
+        const isCsv = sig.source_type === 'csv' || sig.source_type === 'txt';
+        const icon = isCsv ? '📄' : '❤️';
+        return `
+            <div class="overview-signal-item" onclick="selectSignal(${sig.id}); App.goto('signals');">
+                <span class="overview-signal-icon">${icon}</span>
+                <div class="overview-signal-info">
+                    <div class="overview-signal-name">${escapeHtml(sig.name)}</div>
+                    <div class="overview-signal-meta">
+                        ${sig.fs || '?'} Гц · ${sig.n_sig || '?'} кан. · ${sig.source_type}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function loadOverview() {
+    const mSignals = $('metricSignals');
+    const mAnalyses = $('metricAnalyses');
+    const mAnomalies = $('metricAnomalies');
+    const mQuality = $('metricQuality');
+
+    if (mSignals) mSignals.textContent = currentSignals.length;
+    if (mAnalyses) mAnalyses.textContent = analysisHistory.length;
+
+    let anom = 0, qSum = 0, qCount = 0;
+    analysisHistory.forEach(item => {
+        anom += item.anomalies_count || 0;
+        if (typeof item.quality_score === 'number') {
+            qSum += item.quality_score * 100;
+            qCount++;
+        }
+    });
+
+    if (mAnomalies) mAnomalies.textContent = anom;
+    if (mQuality) mQuality.textContent = qCount > 0 ? (qSum / qCount).toFixed(1) + '%' : '—';
+    if (overviewSignalList) renderOverviewSignals(currentSignals);
 }
 
 // ============================================
@@ -201,52 +288,49 @@ async function selectSignal(id) {
 
     showDetails(signal);
     renderSignals(currentSignals);
-    addChatMessage('system', `📊 Выбран сигнал: **${signal.name}** (${signal.fs || '?'} Hz, ${signal.duration ? signal.duration.toFixed(1) : '?'} сек)`);
-
-    // Загружаем данные — с проверкой актуальности внутри
+    addChatMessage('system', `📊 Выбран: **${escapeHtml(signal.name)}**`);
     await loadSignalData(id);
-
-    showMessage('info', `✅ Выбран: ${signal.name}`);
 }
 
-// ============================================
-// ДЕТАЛИ СИГНАЛА
-// ============================================
 function showDetails(signal) {
-    let panel = document.getElementById('detailsPanel');
+    let panel = $('detailsPanel');
     if (!panel) {
         panel = document.createElement('div');
         panel.id = 'detailsPanel';
         panel.className = 'details-panel';
-        signalList.parentNode.insertBefore(panel, signalList.nextSibling);
+        if (signalList && signalList.parentNode) {
+            signalList.parentNode.insertBefore(panel, signalList.nextSibling);
+        }
     }
 
-    const safeName = escapeHtml(signal.name || signal.file_name || `#${signal.id}`);
-    const safeFile = escapeHtml(signal.file_name || '—');
+    const isCsv = signal.source_type === 'csv' || signal.source_type === 'txt';
+    const channels = signal.channels ? signal.channels.join(', ') : '—';
 
     panel.innerHTML = `
         <div class="details-header">
-            <h2>📊 ${safeName}</h2>
+            <h2>${escapeHtml(signal.name)}</h2>
             <button onclick="closeDetails()" class="btn-close">✕</button>
         </div>
         <div class="detail-grid">
-            <div class="detail-item"><div class="label">Имя файла</div><div class="value">${safeFile}</div></div>
-            <div class="detail-item"><div class="label">.mat файл</div><div class="value">${signal.mat_file ? '✅ Есть' : '❌ Нет'}</div></div>
-            <div class="detail-item"><div class="label">Частота</div><div class="value">${signal.fs || '—'} Hz</div></div>
+            <div class="detail-item"><div class="label">Источник</div><div class="value">${signal.source_type.toUpperCase()}</div></div>
+            <div class="detail-item"><div class="label">Частота</div><div class="value">${signal.fs || '—'} Гц</div></div>
             <div class="detail-item"><div class="label">Каналы</div><div class="value">${signal.n_sig || '—'}</div></div>
+            <div class="detail-item"><div class="label">Точек</div><div class="value">${signal.sig_len || '—'}</div></div>
             <div class="detail-item"><div class="label">Длительность</div><div class="value">${signal.duration ? signal.duration.toFixed(2) + ' с' : '—'}</div></div>
-            <div class="detail-item"><div class="label">Размер</div><div class="value">${signal.size_kb || 0} KB</div></div>
+            <div class="detail-item"><div class="label">Размер</div><div class="value">${signal.size_kb || 0} КБ</div></div>
         </div>
+        ${isCsv && signal.channels ? `<div class="detail-channels"><b>Каналы:</b> ${escapeHtml(channels)}</div>` : ''}
+        <canvas id="signalCanvas" class="signal-canvas"></canvas>
         <div class="detail-actions">
             <button class="btn btn-primary" onclick="analyzeSignal(${signal.id})">🔬 Анализировать</button>
-            <button class="btn btn-secondary" onclick="loadSignalData(${signal.id})">📊 Данные</button>
+            <button class="btn btn-secondary" onclick="loadSignalData(${signal.id})">📊 Обновить график</button>
         </div>
     `;
     panel.style.display = 'block';
 }
 
 function closeDetails() {
-    const panel = document.getElementById('detailsPanel');
+    const panel = $('detailsPanel');
     if (panel) panel.style.display = 'none';
     selectedSignalId = null;
     renderSignals(currentSignals);
@@ -257,102 +341,89 @@ function closeDetails() {
 // ============================================
 async function loadSignalData(id) {
     try {
-        // Запрос устарел, если пользователь уже выбрал другой сигнал
         if (selectedSignalId !== id) return null;
 
-        showMessage('info', '📊 Загрузка данных...');
-
-        const response = await fetch(`${API_BASE}/${id}/data`);
+        const response = await fetch(`${ECG_BASE}/${id}/data`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const data = await response.json();
+        if (selectedSignalId !== id) return null;
 
-        if (selectedSignalId !== id) return null; // ещё раз проверили после await
-
-        console.log('📊 Данные сигнала:', data);
-
+        // Рисуем график
         const signal = currentSignals.find(s => s.id === id);
-        const name = signal ? signal.name : `#${id}`;
-        const shownPoints = Array.isArray(data.data) ? data.data.length : 0;
+        if (typeof Charts !== 'undefined') {
+            setTimeout(() => {
+                Charts.drawSignal('signalCanvas', data.data, {
+                    fs: data.fs,
+                    duration: data.total_points / data.fs,
+                    channelLabel: data.channels ? data.channels[0] : null,
+                });
+            }, 50);
+        }
 
+        const shown = Array.isArray(data.data) ? data.data.length : 0;
         addChatMessage('assistant',
-            `📊 **Данные сигнала ${escapeHtml(name)}**\n\n` +
-            `- **Частота:** ${data.fs} Hz\n` +
-            `- **Точек данных:** ${data.total_points}\n` +
-            `- **Выборка:** ${shownPoints} точек для отображения`
+            `📊 **${escapeHtml(signal ? signal.name : '#' + id)}**\n\n` +
+            `- Каналов: ${data.channels ? data.channels.length : '—'}\n` +
+            `- Точек: ${data.total_points}\n` +
+            `- Показано: ${shown}\n` +
+            `- fs: ${data.fs} Гц`
         );
 
-        showMessage('success', `✅ Загружено ${data.total_points} точек (${data.fs} Hz)`);
         return data;
-
-    } catch (error) {
-        console.error('❌ Ошибка загрузки данных:', error);
-        if (selectedSignalId === id) {
-            showMessage('error', '❌ Ошибка загрузки данных');
-        }
+    } catch (e) {
+        console.error('loadSignalData:', e);
+        Toast.show('❌ Ошибка загрузки данных', 'error');
         return null;
     }
 }
 
 // ============================================
-// АНАЛИЗ СИГНАЛА
+// АНАЛИЗ
 // ============================================
 async function analyzeSignal(id) {
     const signal = currentSignals.find(s => s.id === id);
-    if (!signal) {
-        showMessage('error', '❌ Сигнал не найден');
-        return;
-    }
+    if (!signal) return;
 
     try {
-        showMessage('info', `🔬 Запуск анализа ${signal.name}...`);
+        Toast.show(`🔬 Анализ «${signal.name}» запущен`, 'info');
         addChatMessage('system', `⏳ Запуск анализа **${escapeHtml(signal.name)}**...`);
 
-        const response = await fetch(`${API_BASE}/analyze`, {
+        const response = await fetch(`${ECG_BASE}/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ signal_id: id, params: {} })
         });
-
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
         const result = await response.json();
         currentTaskId = result.task_id;
 
-        showMessage('info', `🔄 Анализ запущен (ID: ${result.task_id.slice(0, 8)}...)`);
-        addChatMessage('assistant',
-            `⏳ Анализ запущен. Ожидайте результатов...\n\n` +
-            `**ID задачи:** \`${result.task_id}\``
-        );
-
+        addChatMessage('assistant', `⏳ Анализ запущен. ID: \`${result.task_id.slice(0, 8)}...\``);
         await waitForAnalysis(result.task_id, signal);
 
-    } catch (error) {
-        console.error('❌ Ошибка анализа:', error);
-        showMessage('error', '❌ Ошибка запуска анализа');
-        addChatMessage('assistant', `❌ Ошибка анализа: ${escapeHtml(error.message)}`);
+    } catch (e) {
+        console.error(e);
+        Toast.show('❌ Ошибка запуска анализа', 'error');
     }
 }
 
 async function waitForAnalysis(taskId, signal) {
     let attempts = 0;
     const maxAttempts = 60;
-    let lastShownProgress = 0;
+    let lastProgress = 0;
 
     while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(r => setTimeout(r, 1000));
         attempts++;
 
         try {
-            const response = await fetch(`${API_BASE}/status/${taskId}`);
-            if (!response.ok) continue;
-
-            const status = await response.json();
+            const r = await fetch(`${ECG_BASE}/status/${taskId}`);
+            if (!r.ok) continue;
+            const status = await r.json();
 
             if (status.status === 'completed') {
-                const resultResponse = await fetch(`${API_BASE}/results/${taskId}`);
-                const result = await resultResponse.json();
-
+                const result = await (await fetch(`${ECG_BASE}/results/${taskId}`)).json();
                 showReport(result);
 
                 analysisHistory.push({
@@ -361,85 +432,78 @@ async function waitForAnalysis(taskId, signal) {
                     date: new Date().toISOString(),
                     report: result.report_markdown || '',
                     quality_score: typeof result.quality_score === 'number' ? result.quality_score : null,
-                    anomalies_count: (result.anomalies || []).length
+                    anomalies_count: (result.anomalies || []).length,
                 });
                 saveHistory();
 
-                const qualityPct = typeof result.quality_score === 'number'
-                    ? Math.round(result.quality_score * 100)
-                    : '—';
+                const q = typeof result.quality_score === 'number'
+                    ? Math.round(result.quality_score * 100) : '—';
 
                 addChatMessage('assistant',
-                    `✅ **Анализ ${escapeHtml(signal.name)} завершен!**\n\n` +
-                    `📊 **Качество сигнала:** ${qualityPct}%\n` +
-                    `🔍 **Обнаружено аномалий:** ${(result.anomalies || []).length}\n\n` +
-                    `Нажмите **"Показать отчёт"** для деталей.`
+                    `✅ **Анализ завершён**\n\n` +
+                    `- Качество: ${q}%\n` +
+                    `- Аномалий: ${(result.anomalies || []).length}`
                 );
-
-                showMessage('success', `✅ Анализ ${signal.name} завершен!`);
+                Toast.show('✅ Анализ завершён', 'success');
                 loadHistory();
                 updateAnalytics();
+                loadOverview();
                 return;
 
             } else if (status.status === 'failed') {
-                addChatMessage('assistant', `❌ **Ошибка анализа:** ${escapeHtml(status.error || 'Неизвестная ошибка')}`);
-                showMessage('error', '❌ Анализ завершился с ошибкой');
+                addChatMessage('assistant', `❌ **Ошибка:** ${escapeHtml(status.error || '')}`);
+                Toast.show('❌ Анализ упал', 'error');
                 return;
 
             } else {
-                const progress = status.progress || 0;
-                if (progress >= lastShownProgress + 20) {
-                    lastShownProgress = progress;
-                    addChatMessage('system', `⏳ Прогресс: ${progress}%`);
+                const p = status.progress || 0;
+                if (p >= lastProgress + 20) {
+                    lastProgress = p;
+                    addChatMessage('system', `⏳ Прогресс: ${p}%`);
                 }
             }
-
-        } catch (e) {
-            console.log('⏳ Ожидание результата...');
-        }
+        } catch (e) {}
     }
 
-    addChatMessage('assistant', `⏰ Превышено время ожидания для анализа ${escapeHtml(signal.name)}`);
-    showMessage('error', '⏰ Превышено время ожидания');
+    addChatMessage('assistant', `⏰ Превышено время ожидания`);
+    Toast.show('⏰ Превышено время ожидания', 'error');
 }
 
 // ============================================
 // ОТЧЁТ
 // ============================================
 function showReport(result) {
+    if (!reportContent) return;
     reportContent.innerHTML = result.report_markdown
         ? renderMarkdown(result.report_markdown)
         : '<em>Отчёт недоступен</em>';
     reportModal.style.display = 'flex';
-    exportReportBtn.disabled = !result.report_markdown;
+    exportReportMd.disabled = false;
+    exportReportTxt.disabled = false;
 }
 
 function closeReport() {
-    reportModal.style.display = 'none';
-    exportReportBtn.disabled = true;
+    if (reportModal) reportModal.style.display = 'none';
+    if (exportReportMd) exportReportMd.disabled = true;
+    if (exportReportTxt) exportReportTxt.disabled = true;
 }
 
 // ============================================
 // ЧАТ
 // ============================================
 function addChatMessage(type, content) {
+    if (!chatMessages) return;
     const welcome = chatMessages.querySelector('.chat-welcome');
     if (welcome) welcome.remove();
 
     const message = document.createElement('div');
     message.className = `chat-message ${type}`;
-
     const time = nowTime();
 
-    const html = (type === 'user')
-        ? escapeHtml(content)
-        : renderMarkdown(content);
-
+    const html = (type === 'user') ? escapeHtml(content) : renderMarkdown(content);
     message.innerHTML = `<div>${html}</div><span class="time">${time}</span>`;
-
     chatMessages.appendChild(message);
     chatMessages.scrollTop = chatMessages.scrollHeight;
-
     chatHistory.push({ type, content, time });
 }
 
@@ -452,47 +516,38 @@ async function sendChatMessage() {
     chatSendBtn.disabled = true;
 
     try {
-        const lowerText = text.toLowerCase();
+        const lower = text.toLowerCase();
 
-        if (lowerText.includes('анализ') || lowerText.includes('проанализируй')) {
+        if (lower.includes('анализ') || lower.includes('проанализируй')) {
             if (selectedSignalId) {
-                // Запускаем анализ в фоне, не блокируя чат
                 analyzeSignal(selectedSignalId);
-                addChatMessage('assistant', '⏳ Анализ запущен в фоне. Результат появится в чате.');
+                addChatMessage('assistant', '⏳ Анализ запущен в фоне.');
             } else {
-                addChatMessage('assistant', 'ℹ️ Сначала выберите сигнал из списка для анализа.');
+                addChatMessage('assistant', 'ℹ️ Сначала выберите сигнал.');
             }
-
-        } else if (lowerText.includes('список') || lowerText.includes('сигналы')) {
+        } else if (lower.includes('список') || lower.includes('сигналы')) {
             if (currentSignals.length === 0) {
-                addChatMessage('assistant', '📋 Список сигналов пуст. Положите `.hea` и `.mat` файлы в `data/signals` и нажмите **Пересканировать**.');
+                addChatMessage('assistant', '📋 Список пуст.');
             } else {
                 const list = currentSignals.map(s =>
-                    `- **${escapeHtml(s.name)}** (${s.fs || '?'} Hz, ${s.duration ? s.duration.toFixed(1) : '?'} сек)`
+                    `- **${escapeHtml(s.name)}** (${s.source_type}, ${s.fs || '?'} Гц)`
                 ).join('\n');
-                addChatMessage('assistant', `📋 **Доступные сигналы (${currentSignals.length}):**\n\n${list}`);
+                addChatMessage('assistant', `📋 **Сигналы (${currentSignals.length}):**\n\n${list}`);
             }
-
-        } else if (lowerText.includes('помощь') || lowerText.includes('help')) {
+        } else if (lower.includes('помощь') || lower.includes('help')) {
             addChatMessage('assistant',
-                `**📖 Помощь по ECG Analyzer**\n\n` +
-                `🔹 **Выберите сигнал** — кликните на карточку\n` +
-                `🔹 **Анализ** — "Проанализируй сигнал"\n` +
-                `🔹 **Данные** — "Покажи данные"\n` +
-                `🔹 **Список** — "Покажи сигналы"\n` +
-                `🔹 **Помощь** — "Помощь"`
+                `**📖 Помощь**\n\n` +
+                `- **Покажи сигналы** — список\n` +
+                `- **Проанализируй** — анализ выбранного\n` +
+                `- **Помощь** — эта справка`
             );
-
         } else {
             addChatMessage('assistant',
-                `🤔 Я получил ваш запрос: *"${escapeHtml(text)}"*\n\n` +
-                `Я могу помочь с анализом ЭКГ сигналов. Выберите сигнал и отправьте команду **"Проанализируй"**.`
+                `🤔 Получил: *"${escapeHtml(text)}"*\n\nВыберите сигнал и напишите **«Проанализируй»**.`
             );
         }
-
-    } catch (error) {
-        console.error('❌ Ошибка чата:', error);
-        addChatMessage('assistant', '❌ Извините, произошла ошибка. Попробуйте позже.');
+    } catch (e) {
+        addChatMessage('assistant', '❌ Ошибка.');
     } finally {
         chatSendBtn.disabled = false;
         chatInput.focus();
@@ -503,32 +558,30 @@ async function sendChatMessage() {
 // ИСТОРИЯ
 // ============================================
 function loadHistory() {
+    if (!historyList) return;
+
     if (analysisHistory.length === 0) {
         historyList.innerHTML = `
             <div class="empty-state">
                 <span class="empty-icon">📜</span>
                 <p>История пуста</p>
-                <small>Проведите анализ сигнала, чтобы он появился здесь</small>
             </div>
         `;
         return;
     }
 
     historyList.innerHTML = analysisHistory.slice().reverse().map(item => {
-        const dateStr = new Date(item.date).toLocaleString('ru-RU');
-        const preview = escapeHtml((item.report || '').replace(/[#*`>|]/g, ' ').split('\n').filter(Boolean).slice(0, 3).join(' ').substring(0, 140));
-        const safeName = escapeHtml(item.signal_name || 'Без имени');
-
+        const date = new Date(item.date).toLocaleString('ru-RU');
+        const preview = escapeHtml((item.report || '').replace(/[#*`>|]/g, ' ')
+            .split('\n').filter(Boolean).slice(0, 3).join(' ').substring(0, 140));
         return `
             <div class="history-item">
-                <div class="top">
-                    <span class="signal-name">❤️ ${safeName}</span>
-                    <span class="date">${dateStr}</span>
+                <div class="history-top">
+                    <span class="history-name">❤️ ${escapeHtml(item.signal_name)}</span>
+                    <span class="history-date">${date}</span>
                 </div>
-                <div class="preview">${preview}...</div>
-                <div style="margin-top:8px;">
-                    <button class="btn btn-secondary" onclick="showReportById('${item.id}')">📄 Показать отчёт</button>
-                </div>
+                <div class="history-preview">${preview}...</div>
+                <button class="btn btn-secondary" onclick="showReportById('${item.id}')">📄 Открыть</button>
             </div>
         `;
     }).join('');
@@ -539,9 +592,8 @@ function showReportById(id) {
     if (item && item.report) {
         reportContent.innerHTML = renderMarkdown(item.report);
         reportModal.style.display = 'flex';
-        exportReportBtn.disabled = false;
-    } else {
-        showMessage('error', '❌ Отчёт не найден');
+        exportReportMd.disabled = false;
+        exportReportTxt.disabled = false;
     }
 }
 
@@ -549,52 +601,37 @@ function showReportById(id) {
 // АНАЛИТИКА
 // ============================================
 function updateAnalytics() {
-    const totalSignals = currentSignals.length;
-    const totalAnalyses = analysisHistory.length;
-
-    let totalAnomalies = 0;
-    let totalQuality = 0;
-    let qualityCount = 0;
-
+    let anom = 0, qSum = 0, qCount = 0;
     analysisHistory.forEach(item => {
-        totalAnomalies += item.anomalies_count || 0;
+        anom += item.anomalies_count || 0;
         if (typeof item.quality_score === 'number') {
-            totalQuality += item.quality_score * 100;
-            qualityCount++;
+            qSum += item.quality_score * 100;
+            qCount++;
         }
     });
+    const avg = qCount > 0 ? qSum / qCount : 0;
 
-    const avgQuality = qualityCount > 0 ? totalQuality / qualityCount : 0;
-
-    document.getElementById('totalSignals').textContent   = totalSignals;
-    document.getElementById('totalAnomalies').textContent = totalAnomalies;
-    document.getElementById('totalAnalyses').textContent  = totalAnalyses;
-    document.getElementById('avgQuality').textContent     = avgQuality > 0 ? avgQuality.toFixed(1) + '%' : '—';
+    const el = (id) => document.getElementById(id);
+    if (el('totalSignals')) el('totalSignals').textContent = currentSignals.length;
+    if (el('totalAnomalies')) el('totalAnomalies').textContent = anom;
+    if (el('totalAnalyses')) el('totalAnalyses').textContent = analysisHistory.length;
+    if (el('avgQuality')) el('avgQuality').textContent = avg > 0 ? avg.toFixed(1) + '%' : '—';
+    if (el('metricSignals')) el('metricSignals').textContent = currentSignals.length;
+    if (el('metricAnalyses')) el('metricAnalyses').textContent = analysisHistory.length;
+    if (el('metricAnomalies')) el('metricAnomalies').textContent = anom;
+    if (el('metricQuality')) el('metricQuality').textContent = avg > 0 ? avg.toFixed(1) + '%' : '—';
 }
 
 // ============================================
 // ВСПОМОГАТЕЛЬНЫЕ
 // ============================================
 function setStatus(state, text) {
-    statusDot.className = 'dot ' + state;
-    statusText.textContent = text;
+    if (statusDot) statusDot.className = 'dot ' + state;
+    if (statusText) statusText.textContent = text;
 }
 
 function updateCount(count) {
-    countBadge.textContent = count;
-}
-
-function showMessage(type, text) {
-    const msg = document.createElement('div');
-    msg.className = `message ${type}`;
-    msg.textContent = text;
-    messages.appendChild(msg);
-
-    setTimeout(() => {
-        msg.style.opacity = '0';
-        msg.style.transition = 'opacity 0.5s';
-        setTimeout(() => msg.remove(), 500);
-    }, 4000);
+    if (countBadge) countBadge.textContent = count;
 }
 
 // ============================================
@@ -614,81 +651,77 @@ function download(filename, content, mime = 'text/plain') {
 
 function exportChat() {
     if (chatHistory.length === 0) {
-        showMessage('error', 'Нет сообщений для экспорта');
+        Toast.show('Нет сообщений', 'error');
         return;
     }
-
-    let text = '=== ECG Analyzer Чат ===\n\n';
-    chatHistory.forEach(m => {
-        const role = m.type === 'user' ? 'Пользователь' : (m.type === 'system' ? 'Система' : 'AI');
-        text += `[${m.time}] ${role}: ${m.content}\n\n`;
-    });
-
-    const date = new Date().toISOString().slice(0, 10);
-    download(`chat_export_${date}.txt`, text, 'text/plain');
-    showMessage('success', '✅ Чат экспортирован');
+    const text = '=== ECG Analyzer Чат ===\n\n' +
+        chatHistory.map(m => `[${m.time}] ${m.type === 'user' ? 'Вы' : 'AI'}: ${m.content}`).join('\n\n');
+    download(`chat_${new Date().toISOString().slice(0, 10)}.txt`, text);
+    Toast.show('✅ Чат сохранён', 'success');
 }
 
-function exportReport() {
-    const content = reportContent.textContent.trim();
-    if (!content) {
-        showMessage('error', 'Нет отчёта для скачивания');
-        return;
-    }
-
-    const md = reportContent.innerHTML
-        .replace(/<br\s*\/?>/gi, '\n')
+function exportReportMdFile() {
+    const html = reportContent.innerHTML;
+    const md = html.replace(/<br\s*\/?>/gi, '\n')
         .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, '\n')
         .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\n{3,}/g, '\n\n').trim();
+    download(`report_${new Date().toISOString().slice(0, 10)}.md`, md, 'text/markdown');
+    Toast.show('✅ Отчёт .md скачан', 'success');
+}
 
-    const date = new Date().toISOString().slice(0, 10);
-    download(`report_${date}.md`, md, 'text/markdown');
-    showMessage('success', '✅ Отчёт скачан');
+function exportReportTxtFile() {
+    const md = reportContent.textContent || '';
+    download(`report_${new Date().toISOString().slice(0, 10)}.txt`, md, 'text/plain');
+    Toast.show('✅ Отчёт .txt скачан', 'success');
 }
 
 // ============================================
 // СОБЫТИЯ
 // ============================================
-refreshBtn.addEventListener('click', loadSignals);
-reloadBtn.addEventListener('click', reloadSignals);
-exportChatBtn.addEventListener('click', exportChat);
+if (refreshBtn) refreshBtn.addEventListener('click', loadSignals);
+if (reloadBtn) reloadBtn.addEventListener('click', reloadSignals);
+if (overviewReloadBtn) overviewReloadBtn.addEventListener('click', reloadSignals);
+if (exportChatBtn) exportChatBtn.addEventListener('click', exportChat);
 
-chatSendBtn.addEventListener('click', sendChatMessage);
-chatInput.addEventListener('keydown', (e) => {
+if (chatSendBtn) chatSendBtn.addEventListener('click', sendChatMessage);
+if (chatInput) chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendChatMessage();
     }
 });
 
-closeReportBtn.addEventListener('click', closeReport);
-exportReportBtn.addEventListener('click', exportReport);
+if (closeReportBtn) closeReportBtn.addEventListener('click', closeReport);
+if (exportReportMd) exportReportMd.addEventListener('click', exportReportMdFile);
+if (exportReportTxt) exportReportTxt.addEventListener('click', exportReportTxtFile);
 
-clearHistoryBtn.addEventListener('click', () => {
-    if (confirm('Очистить историю анализов?')) {
+if (clearHistoryBtn) clearHistoryBtn.addEventListener('click', () => {
+    if (confirm('Очистить историю?')) {
         analysisHistory = [];
         saveHistory();
         loadHistory();
         updateAnalytics();
-        showMessage('info', '🗑️ История очищена');
+        loadOverview();
+        Toast.show('🗑️ История очищена', 'success');
     }
 });
 
-reportModal.addEventListener('click', (e) => {
+if (reportModal) reportModal.addEventListener('click', e => {
     if (e.target === reportModal) closeReport();
 });
 
-// Автообновление — только когда вкладка активна и открыта страница сигналов
+// ============================================
+// АВТООБНОВЛЕНИЕ
+// ============================================
 function tickRefresh() {
     if (document.hidden) return;
     const signalsPage = document.getElementById('page-signals');
-    if (signalsPage && signalsPage.classList.contains('active')) {
+    const overviewPage = document.getElementById('page-overview');
+    if ((signalsPage && signalsPage.classList.contains('active')) ||
+        (overviewPage && overviewPage.classList.contains('active'))) {
         loadSignals();
     }
 }
@@ -701,38 +734,22 @@ document.addEventListener('visibilitychange', () => {
 // ИНИЦИАЛИЗАЦИЯ
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('❤️ ECG Analyzer Pro загружен!');
-    console.log(`📡 API: ${API_BASE}`);
+    console.log('❤️ ECG Analyzer загружен');
 
-    // Восстанавливаем историю из localStorage
     restoreHistory();
 
-    // Динамический API-URL в настройках
     const apiUrlEl = document.getElementById('apiUrl');
     if (apiUrlEl) apiUrlEl.textContent = window.location.origin;
 
-    // Кнопка скачивания отчёта — disabled, пока не открыт отчёт
-    exportReportBtn.disabled = true;
+    if (exportReportMd) exportReportMd.disabled = true;
+    if (exportReportTxt) exportReportTxt.disabled = true;
+
+    if (typeof Upload !== 'undefined') Upload.init();
 
     loadSignals();
     loadHistory();
     updateAnalytics();
+    loadOverview();
 
-    // Периодическое обновление (см. tickRefresh)
     refreshInterval = setInterval(tickRefresh, 15000);
-
-    // Приветственное сообщение
-    setTimeout(() => {
-        addChatMessage('assistant',
-            '👋 **Добро пожаловать в ECG Analyzer!**\n\n' +
-            'Я помогу вам анализировать ЭКГ сигналы. Вот что я умею:\n' +
-            '• 📋 **Покажи сигналы** — список доступных файлов\n' +
-            '• 🔬 **Проанализируй [имя]** — анализ сигнала\n' +
-            '• 📊 **Данные [имя]** — загрузка данных\n' +
-            '• 📖 **Помощь** — эта справка\n\n' +
-            'Выберите сигнал из списка или отправьте команду!'
-        );
-    }, 500);
 });
-
-console.log('✅ ECG Analyzer Pro готов к работе!');
