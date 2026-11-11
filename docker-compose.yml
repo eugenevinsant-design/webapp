@@ -1,0 +1,71 @@
+# Docker Compose для ECG Analyzer (FastAPI + PostgreSQL)
+#
+# Локальная разработка:
+#   docker compose up -d
+#   (собирает backend из Dockerfile, поднимает postgres)
+#
+# Production:
+#   Замените build: . на image: ghcr.io/asdergh/ecgmetanarrator:latest
+#   (образ публикуется через GitHub Actions при пуше в main)
+
+services:
+  # PostgreSQL 15
+  postgres:
+    image: postgres:15
+    container_name: ecg_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ecg_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ecg_password}
+      POSTGRES_DB: ${POSTGRES_DB:-ecg_analyzer}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ecg_user} -d ${POSTGRES_DB:-ecg_analyzer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - ecg_network
+
+  # FastAPI-бэкенд
+  backend:
+    # Для локальной разработки: сборка из Dockerfile
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Для production: раскомментируйте image и закомментируйте build
+    # image: ghcr.io/asdergh/ecgmetanarrator:latest
+    container_name: ecg_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-dev}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://ecg_user:ecg_password@postgres:5432/ecg_analyzer}
+      SIGNALS_DIR: ${SIGNALS_DIR:-/app/data/signals}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      POOL_SIZE: ${POOL_SIZE:-10}
+      MAX_OVERFLOW: ${MAX_OVERFLOW:-20}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # Монтируем папку с ЭКГ-файлами (чтобы ecg_loader видел данные)
+      - ./data/signals:/app/data/signals
+      # Для dev: монтируем код для hot-reload (раскомментируйте, если нужен --reload)
+      # - ./app:/app/app
+    networks:
+      - ecg_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  ecg_network:
+    driver: bridge

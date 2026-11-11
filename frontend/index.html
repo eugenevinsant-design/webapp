@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ECG Meta Narrator</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- HERO ЭКРАН -->
+  <section id="hero-screen" class="hero">
+    <header class="nav">
+      <div class="brand">ECG<b>META</b>NARRATOR</div>
+      <div class="status">● Система активна</div>
+    </header>
+    <div class="copy">
+      <div class="eyebrow">Интеллектуальная обработка ЭКГ</div>
+      <h1>Видеть ритм.<br><span>Понимать сигнал.</span></h1>
+      <p class="lead">Современная среда для визуализации, разметки и анализа электрокардиографических сигналов.</p>
+      <div class="actions">
+        <button id="start-btn" class="cta">Открыть платформу ↗</button>
+      </div>
+    </div>
+    <div class="heart-container">
+      <img src="assets/images/platform.png" alt="Платформа" class="platform-img">
+      <img src="assets/images/heart.png" alt="Сердце" class="heart-img">
+      <svg class="ecg-overlay" viewBox="0 0 800 200">
+        <path d="M0 100 H200 L220 80 L240 120 L260 100 H350 L370 20 L390 180 L410 100 H800" class="ecg-line"/>
+      </svg>
+    </div>
+  </section>
+
+  <!-- РАБОЧИЙ ЭКРАН -->
+  <section id="workspace-screen" class="workspace hidden">
+    <!-- Фоновые картинки для рабочего экрана (размытые) -->
+    <div class="workspace-bg">
+      <img src="assets/images/platform.png" alt="Платформа" class="platform-img-bg">
+      <img src="assets/images/heart.png" alt="Сердце" class="heart-img-bg">
+    </div>
+
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <button id="back-to-hero" class="icon-btn" data-tooltip="Вернуться на главную">←</button>
+        <span>Панель управления</span>
+      </div>
+      
+      <!-- Блок выбора пакета -->
+      <div class="package-selector">
+        <label>Выберите сигнал ЭКГ:</label>
+        <div class="custom-select-wrapper">
+          <button id="package-select-btn" class="custom-select-btn">
+            <span id="selected-package-text">Загрузка пакетов...</span>
+            <span class="arrow">▼</span>
+          </button>
+          <div id="package-options" class="custom-options hidden">
+            <!-- Опции будут добавлены через JS -->
+          </div>
+        </div>
+        <button id="analyze-btn" class="analyze-btn" data-tooltip="Проанализировать выбранный сигнал">🔬 Анализировать</button>
+      </div>
+
+      <div class="sidebar-header" style="margin-top: 20px;">
+        <span>История</span>
+      </div>
+      <div id="history-list" class="history-list">
+        <p class="empty-history">История пуста</p>
+      </div>
+      <button id="new-chat-btn" class="new-chat-btn" data-tooltip="Начать новый диалог">+ Новый чат</button>
+
+      <!-- Профиль пользователя -->
+      <div class="user-profile">
+        <div class="user-info">
+          <span id="user-name">Пользователь</span>
+        </div>
+        <div class="token-box">
+          <label>Ваш токен:</label>
+          <div class="token-row">
+            <input type="text" id="user-token" readonly class="token-input" value="">
+            <button id="copy-token-btn" class="icon-btn" data-tooltip="Скопировать токен">📋</button>
+          </div>
+        </div>
+        <button id="logout-btn" class="icon-btn" style="width:100%; margin-top:8px;" data-tooltip="Выйти из аккаунта">Выйти</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <div class="chat-container" id="chat-container">
+        <div class="message bot">Здравствуйте! Выберите пакет ЭКГ и задайте вопрос.</div>
+      </div>
+
+      <div id="grade-actions" class="grade-actions hidden">
+        <span>Оцените ответ:</span>
+        <div class="grade-buttons">
+          <button class="grade-btn" data-grade="1" data-tooltip="Очень плохо">1</button>
+          <button class="grade-btn" data-grade="3" data-tooltip="Плохо">3</button>
+          <button class="grade-btn" data-grade="5" data-tooltip="Средне">5</button>
+          <button class="grade-btn" data-grade="7" data-tooltip="Хорошо">7</button>
+          <button class="grade-btn" data-grade="9" data-tooltip="Отлично">9</button>
+          <button class="grade-btn" data-grade="10" data-tooltip="Идеально">10</button>
+        </div>
+      </div>
+
+      <div id="regenerate-action" class="regenerate-action hidden">
+        <button id="regenerate-btn" class="regen-btn" data-tooltip="Сгенерировать новый ответ">Перегенерировать</button>
+      </div>
+
+      <div class="input-area">
+        <input type="text" id="chat-input" placeholder="Введите команду (например, \choose_pkg JS00002) или вопрос..." autocomplete="off">
+        <button id="send-btn" class="send-btn" data-tooltip="Отправить сообщение">→</button>
+      </div>
+    </main>
+  </section>
+
+  <!-- МОДАЛЬНОЕ ОКНО АУТЕНТИФИКАЦИИ -->
+  <div id="auth-modal" class="modal hidden">
+    <div class="modal-content">
+      <h2>Вход в систему</h2>
+      <p class="modal-subtitle">Введите ник для регистрации или ваш токен для входа.</p>
+      
+      <div class="auth-tabs">
+        <button id="tab-register" class="auth-tab active">Регистрация</button>
+        <button id="tab-login" class="auth-tab">Вход</button>
+      </div>
+
+      <!-- Форма регистрации -->
+      <div id="form-register" class="auth-form">
+        <input type="text" id="register-username" placeholder="Ваш ник (мин. 3 символа)" class="auth-input">
+        <button id="register-btn" class="cta" style="width:100%; margin-top:16px;">Создать аккаунт</button>
+      </div>
+
+      <!-- Форма входа -->
+      <div id="form-login" class="auth-form hidden">
+        <input type="text" id="login-token" placeholder="Вставьте ваш токен" class="auth-input">
+        <button id="login-btn" class="cta" style="width:100%; margin-top:16px;">Войти</button>
+      </div>
+
+      <p id="auth-error" class="auth-error hidden"></p>
+    </div>
+  </div>
+
+  <script src="js/scripts.js"></script>
+</body>
+</html>

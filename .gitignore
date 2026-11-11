@@ -1,0 +1,51 @@
+# Переменные окружения (пароли, секреты) — НИКОГДА не коммитить
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Тесты и покрытие
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Логи
+*.log
+logs/
+
+# БД (если используется SQLite для тестов)
+*.db
+*.sqlite3
+
+# Данные (ЭКГ-файлы могут быть большими)
+# Раскомментируйте, если не хотите коммитить данные
+# data/signals/
+
+# Docker
+.docker/
+
+# Alembic (не коммитим локальные миграции, если они генерируются автоматически)
+# alembic/versions/*.py

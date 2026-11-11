@@ -1,0 +1,52 @@
+# Исключаем из Docker-образа всё лишнее (легковесность + безопасность)
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Переменные окружения (пароли) — НИКОГДА не копировать в образ
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Данные (ЭКГ-файлы монтируются через volume, не копируются в образ)
+data/
+
+# Логи
+*.log
+logs/
+
+# БД (если используется SQLite для тестов)
+*.db
+*.sqlite3
+
+# Документация
+README*.md

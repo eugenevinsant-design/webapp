@@ -1,0 +1,117 @@
+import os
+import glob
+import wfdb
+import logging
+from typing import List, Dict, Any
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+class ECGLoader:
+    def __init__(self, signals_dir="./data/signals"):
+        self.signals_dir = signals_dir
+        os.makedirs(signals_dir, exist_ok=True)
+        logger.info(f"📂 Загрузчик ЭКГ инициализирован: {signals_dir}")
+        self._cache = []
+        self._last_scan = None
+    
+    def scan_signals(self, force: bool = False) -> List[Dict[str, Any]]:
+        """Сканирование папки с .hea + .dat файлами"""
+        
+        if not force and self._cache and self._last_scan:
+            return self._cache
+        
+        signals = []
+        
+        if not os.path.exists(self.signals_dir):
+            logger.warning(f"⚠️ Папка {self.signals_dir} не существует")
+            return []
+        
+        hea_files = glob.glob(os.path.join(self.signals_dir, "*.hea"))
+        logger.info(f"🔍 Найдено .hea файлов: {len(hea_files)}")
+        
+        for idx, hea_path in enumerate(hea_files, 1):
+            try:
+                file_name = os.path.basename(hea_path)
+                base_name = os.path.splitext(file_name)[0]
+                dat_path = os.path.join(self.signals_dir, f"{base_name}.dat")
+                
+                if not os.path.exists(dat_path):
+                    logger.warning(f"⚠️ Нет .dat для {base_name}, пропускаем")
+                    continue
+                
+                record = wfdb.rdrecord(os.path.join(self.signals_dir, base_name))
+                fs = record.fs
+                n_sig = record.n_sig
+                sig_len = record.sig_len
+                duration = sig_len / fs if fs else None
+                
+                file_size = os.path.getsize(hea_path) + os.path.getsize(dat_path)
+                
+                # Определяем тип
+                signal_type = "ecg"
+                if 'vibration' in base_name.lower():
+                    signal_type = "vibration"
+                
+                signals.append({
+                    "id": idx,
+                    "name": base_name,
+                    "file_name": file_name,
+                    "file_path": hea_path,
+                    "dat_file": dat_path,
+                    "fs": fs,
+                    "n_sig": n_sig,
+                    "duration": duration,
+                    "size_kb": round(file_size / 1024, 1),
+                    "signal_type": signal_type
+                })
+                
+                logger.info(f"✅ Загружен: {file_name} (fs={fs}Hz)")
+                
+            except Exception as e:
+                logger.error(f"❌ Ошибка загрузки {hea_path}: {e}")
+        
+        self._cache = signals
+        self._last_scan = datetime.now()
+        
+        logger.info(f"📊 Всего загружено: {len(signals)} сигналов")
+        return signals
+    
+    def get_signal_data(self, signal_id: int, max_points: int = 1000):
+        """Получить данные сигнала для отображения"""
+        signals = self.scan_signals()
+        signal = None
+        for s in signals:
+            if s["id"] == signal_id:
+                signal = s
+                break
+        
+        if not signal:
+            return None
+        
+        try:
+            base_name = signal["name"]
+            record = wfdb.rdrecord(os.path.join(self.signals_dir, base_name))
+            
+            data = record.p_signal[:, 0].tolist() if record.p_signal is not None else []
+            
+            # Сэмплируем для графика
+            if len(data) > max_points:
+                step = len(data) // max_points
+                data = data[::step][:max_points]
+            
+            return {
+                "signal_id": signal_id,
+                "name": signal["name"],
+                "fs": record.fs,
+                "data": data,
+                "total_points": len(record.p_signal) if record.p_signal is not None else 0
+            }
+        except Exception as e:
+            logger.error(f"Ошибка чтения данных: {e}")
+            return None
+
+# Глобальный экземпляр
+ecg_loader = ECGLoader()
+
+from datetime import datetime
