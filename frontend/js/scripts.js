@@ -1,6 +1,10 @@
-const API_BASE = '/api/chat';
-const ECG_BASE = '/api/ecg';
-const AUTH_BASE = '/api/auth';
+// Адрес бэкенда задаётся в js/config.js (window.__API_BASE_URL).
+// Пустая строка -> относительные пути (локальный запуск, один процесс).
+// Абсолютный URL -> GitHub Pages + отдельный GPU-сервер с FastAPI/vLLM.
+const API_ROOT = (typeof window !== 'undefined' && window.__API_BASE_URL) || '';
+const API_BASE = `${API_ROOT}/api/chat`;
+const ECG_BASE = `${API_ROOT}/api/ecg`;
+const AUTH_BASE = `${API_ROOT}/api/auth`;
 
 const state = {
   sessionId: null,
