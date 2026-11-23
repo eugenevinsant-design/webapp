@@ -13,6 +13,13 @@ dependencies = [
     "setuptools>=65.5.0",
 ]
 
+[tool.setuptools]
+# Проект — приложение (uvicorn app.main:app), а не библиотека.
+# Явно указываем единственный пакет, чтобы setuptools в flat-layout
+# не пытался включить data/, alembic/, frontend/ (ошибка Vercel:
+# "Multiple top-level packages discovered in a flat-layout").
+packages = ["app"]
+
 [build-system]
 requires = ["setuptools>=65.5.0", "wheel"]
 build-backend = "setuptools.build_meta"
