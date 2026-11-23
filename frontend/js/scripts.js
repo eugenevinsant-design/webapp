@@ -6,6 +6,7 @@ const state = {
   sessionId: null,
   currentResponseId: null,
   history: [],
+  packages: [],
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -33,6 +34,27 @@ async function authFetch(url, options = {}) {
   return fetch(url, { ...options, headers });
 }
 
+// ---- Обработка ответов API ----
+// Возвращает JSON или бросает понятную ошибку. 401 -> модалка входа, 503 -> LLM недоступна.
+async function parseApiResponse(res) {
+  if (res.status === 401) {
+    showAuthModal();
+    throw new Error('Требуется авторизация');
+  }
+  if (res.status === 503) {
+    let detail = 'LLM-сервис недоступен. Повторите позже.';
+    try {
+      const body = await res.json();
+      if (body && body.detail) detail = body.detail;
+    } catch (e) { /* ignore */ }
+    throw new Error(detail);
+  }
+  if (!res.ok) {
+    throw new Error('Ошибка API: ' + res.status);
+  }
+  return res.json();
+}
+
 // ---- API ----
 async function apiChat(text) {
   const res = await authFetch(`${API_BASE}/`, {
@@ -40,9 +62,7 @@ async function apiChat(text) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, session_id: state.sessionId })
   });
-  if (res.status === 401) { showAuthModal(); throw new Error('Требуется авторизация'); }
-  if (!res.ok) throw new Error('Ошибка API: ' + res.status);
-  return res.json();
+  return parseApiResponse(res);
 }
 
 async function apiGrade(responseId, grade) {
@@ -51,9 +71,7 @@ async function apiGrade(responseId, grade) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ response_id: responseId, grade })
   });
-  if (res.status === 401) { showAuthModal(); throw new Error('Требуется авторизация'); }
-  if (!res.ok) throw new Error('Ошибка API: ' + res.status);
-  return res.json();
+  return parseApiResponse(res);
 }
 
 async function apiRegenerate(responseId) {
@@ -62,38 +80,87 @@ async function apiRegenerate(responseId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ response_id: responseId })
   });
-  if (res.status === 401) { showAuthModal(); throw new Error('Требуется авторизация'); }
-  if (!res.ok) throw new Error('Ошибка API: ' + res.status);
-  return res.json();
+  return parseApiResponse(res);
 }
 
 async function apiGetPackages() {
   const res = await authFetch(`${ECG_BASE}/`);
-  if (res.status === 401) { showAuthModal(); throw new Error('Требуется авторизация'); }
-  if (!res.ok) throw new Error('Ошибка API: ' + res.status);
-  return res.json();
+  return parseApiResponse(res);
 }
 
-// ---- UI ----
-// Загружаем marked.js для рендеринга Markdown (с fallback)
-let markedLoaded = false;
-const script = document.createElement('script');
-script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
-script.onload = () => { markedLoaded = true; };
-document.head.appendChild(script);
+async function apiGetHistory() {
+  const res = await authFetch(`${API_BASE}/history?limit=50`);
+  return parseApiResponse(res);
+}
+
+// Отрисовать реальную историю с сервера.
+async function loadHistory() {
+  const list = $('#history-list');
+  try {
+    const items = await apiGetHistory();
+    list.innerHTML = '';
+    if (!items.length) {
+      list.innerHTML = '<p class="empty-history">История пуста</p>';
+      return;
+    }
+    items.forEach(it => {
+      const div = document.createElement('div');
+      div.className = 'history-item';
+      const label = it.pkg ? `${it.pkg}` : 'без пакета';
+      const grade = it.grade != null ? ` · оценка ${it.grade}/10` : '';
+      div.textContent = `${label}${grade} — ${it.question || it.excerpt || ''}`.slice(0, 90);
+      div.title = (it.excerpt || it.question || '');
+      div.addEventListener('click', () => {
+        if (it.pkg) {
+          state.sessionId = it.session_id;
+          addMessage(`Сессия ${it.session_id} · пакет ${it.pkg}`, 'bot');
+        }
+      });
+      list.appendChild(div);
+    });
+  } catch (e) {
+    console.error('Не удалось загрузить историю:', e);
+  }
+}
+
+// ---- Markdown ----
+// marked.js подключён локально (js/vendor/marked.min.js) — без CDN.
+const markedLoaded = typeof marked !== 'undefined' && !window.__markedMissing;
+
+// Экранирование HTML: защита от XSS при вставке пользовательских/серверных строк.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderBotMarkdown(text) {
+  if (markedLoaded) {
+    try {
+      return marked.parse(text);
+    } catch (e) {
+      console.error('marked.parse упал, fallback на plain text:', e);
+    }
+  }
+  // Fallback: безопасный plain text с переносами строк
+  return escapeHtml(text).replace(/\n/g, '<br>');
+}
 
 function addMessage(text, sender) {
   const container = $('#chat-container');
   const div = document.createElement('div');
   div.className = `message ${sender}`;
-  
-  // Если это ответ модели и marked загружен — рендерим Markdown
-  if (sender === 'bot' && markedLoaded && typeof marked !== 'undefined') {
-    div.innerHTML = marked.parse(text);
+
+  if (sender === 'bot') {
+    div.innerHTML = renderBotMarkdown(text);
   } else {
+    // Пользовательский текст — всегда как plain text, без HTML-интерпретации
     div.textContent = text;
   }
-  
+
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
   return div;
@@ -102,15 +169,86 @@ function addMessage(text, sender) {
 function addHistory(text) {
   state.history.push(text);
   const list = $('#history-list');
-  // Удаляем "История пуста", если она есть
   const empty = list.querySelector('.empty-history');
   if (empty) empty.remove();
-  
+
   const div = document.createElement('div');
   div.className = 'history-item';
   div.textContent = text;
   list.appendChild(div);
   list.scrollTop = list.scrollHeight;
+}
+
+// ---- График ЭКГ ----
+const ECG_POINTS = 1000;
+
+async function apiGetSignalData(signalId) {
+  const res = await authFetch(`${ECG_BASE}/${signalId}/data`);
+  return parseApiResponse(res);
+}
+
+function drawEcgChart(data) {
+  const canvas = $('#ecg-chart');
+  if (!canvas || !data || !Array.isArray(data.data) || !data.data.length) return;
+
+  const panel = $('#ecg-chart-panel');
+  panel.classList.remove('hidden');
+  $('#ecg-chart-title').textContent = `Сигнал ${data.name}`;
+  $('#ecg-chart-meta').textContent = `fs=${data.fs} Гц · точек: ${data.total_points}`;
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 800;
+  const cssH = 180;
+  canvas.width = Math.round(cssW * dpr);
+  canvas.height = Math.round(cssH * dpr);
+  canvas.style.height = cssH + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  // Сетка
+  ctx.strokeStyle = 'rgba(95,191,220,0.10)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < cssW; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cssH); ctx.stroke();
+  }
+  for (let y = 0; y < cssH; y += 30) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cssW, y); ctx.stroke();
+  }
+
+  const pts = data.data;
+  const min = Math.min(...pts);
+  const max = Math.max(...pts);
+  const span = (max - min) || 1;
+  const padY = 12;
+  const usableH = cssH - padY * 2;
+
+  ctx.beginPath();
+  pts.forEach((v, i) => {
+    const x = (i / (pts.length - 1)) * cssW;
+    const y = padY + (1 - (v - min) / span) * usableH;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#42eaff';
+  ctx.lineWidth = 1.6;
+  ctx.shadowColor = '#42eaff';
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+async function showEcgChart(signalId) {
+  try {
+    const data = await apiGetSignalData(signalId);
+    drawEcgChart(data);
+  } catch (e) {
+    console.error('Не удалось загрузить данные графика:', e);
+  }
+}
+
+function hideEcgChart() {
+  $('#ecg-chart-panel').classList.add('hidden');
 }
 
 // Лоадер
@@ -176,6 +314,7 @@ function renderOptions(packages) {
 async function loadPackages() {
   try {
     const packages = await apiGetPackages();
+    state.packages = packages;
     renderOptions(packages);
     $('#selected-package-text').textContent = 'Выберите пакет...';
   } catch (e) {
@@ -191,15 +330,18 @@ async function handleAnalyze() {
     alert('Сначала выберите пакет из списка');
     return;
   }
-  // 1. Отправляем на сервер правильную команду
+  // Отправляем на сервер команду \choose_pkg (один бэкслеш в строке).
   const serverText = `\\choose_pkg ${pkgName} Сделай аннотацию этого сигнала`;
-  
-  // 2. Показываем пользователю красивое сообщение
+
   addMessage(`Выбран сигнал: ${pkgName}. Запуск анализа...`, 'user');
   addHistory(`Выбран пакет: ${pkgName}`);
+
+  // Показываем график выбранного сигнала (по имени находим id в списке)
+  const pkg = (state.packages || []).find(p => p.name === pkgName);
+  if (pkg) showEcgChart(pkg.id);
+
   showLoader();
 
-  // 3. Вызываем API напрямую, минуя поле ввода
   try {
     const data = await apiChat(serverText);
     hideLoader();
@@ -213,6 +355,7 @@ async function handleAnalyze() {
     }
     showGradeActions(data.can_grade);
     showRegenerateAction(data.can_regenerate);
+    loadHistory();
   } catch (e) {
     hideLoader();
     addMessage('Ошибка: ' + e.message, 'bot');
@@ -245,6 +388,7 @@ async function handleSend() {
 
     showGradeActions(data.can_grade);
     showRegenerateAction(data.can_regenerate);
+    loadHistory();
   } catch (e) {
     hideLoader();
     addMessage('Ошибка: ' + e.message, 'bot');
@@ -260,7 +404,7 @@ async function handleGrade(grade) {
     showGradeActions(data.can_grade);
     showRegenerateAction(data.can_regenerate);
   } catch (e) {
-    alert('Ошибка при выставлении оценки: ' + e.message);
+    addMessage('Ошибка при выставлении оценки: ' + e.message, 'bot');
   }
 }
 
@@ -276,59 +420,8 @@ async function handleRegenerate() {
     showRegenerateAction(data.can_regenerate);
   } catch (e) {
     hideLoader();
-    alert('Ошибка при перегенерации: ' + e.message);
+    addMessage('Ошибка при перегенерации: ' + e.message, 'bot');
   }
-}
-
-function init() {
-  $('#start-btn').addEventListener('click', () => {
-    $('#hero-screen').classList.add('hidden');
-    $('#workspace-screen').classList.remove('hidden');
-    // Загружаем пакеты при первом открытии
-    loadPackages();
-  });
-
-  $('#back-to-hero').addEventListener('click', () => {
-    $('#workspace-screen').classList.add('hidden');
-    $('#hero-screen').classList.remove('hidden');
-  });
-
-  $('#send-btn').addEventListener('click', handleSend);
-  $('#chat-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') handleSend();
-  });
-
-  document.querySelectorAll('.grade-btn').forEach(btn => {
-    btn.addEventListener('click', () => handleGrade(parseInt(btn.dataset.grade)));
-  });
-
-  $('#regenerate-btn').addEventListener('click', handleRegenerate);
-
-  $('#analyze-btn').addEventListener('click', handleAnalyze);
-
-  // Кастомный дропдаун
-  $('#package-select-btn').addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleOptions();
-  });
-
-  // Закрытие списка при клике вне его
-  document.addEventListener('click', (e) => {
-    const wrapper = document.querySelector('.custom-select-wrapper');
-    if (wrapper && !wrapper.contains(e.target)) {
-      $('#package-options').classList.add('hidden');
-      $('#package-select-btn').classList.remove('active');
-    }
-  });
-
-  $('#new-chat-btn').addEventListener('click', () => {
-    state.sessionId = null;
-    state.currentResponseId = null;
-    $('#chat-container').innerHTML = '<div class="message bot">Здравствуйте! Выберите пакет ЭКГ и задайте вопрос.</div>';
-    $('#history-list').innerHTML = '<p class="empty-history">История пуста</p>';
-    showGradeActions(false);
-    showRegenerateAction(false);
-  });
 }
 
 // ---- АУТЕНТИФИКАЦИЯ ----
@@ -354,7 +447,6 @@ async function checkAuth() {
       return false;
     }
     const data = await res.json();
-    // Заполняем поля профиля
     $('#user-token').value = token;
     $('#user-name').textContent = data.username;
     return true;
@@ -382,8 +474,10 @@ async function handleRegister() {
     const data = await res.json();
     setToken(data.api_token);
     hideAuthModal();
-    alert('Регистрация успешна! Ваш токен сохранен. Скопируйте его для входа с другого устройства: ' + data.api_token);
-    loadPackages();
+    $('#user-token').value = data.api_token;
+    $('#user-name').textContent = data.username;
+    addMessage(`Регистрация успешна. Добро пожаловать, ${data.username}! Токен сохранён в браузере.`, 'bot');
+    await loadPackages();
   } catch (e) {
     $('#auth-error').textContent = e.message;
     $('#auth-error').classList.remove('hidden');
@@ -402,15 +496,19 @@ async function handleLogin() {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     if (!res.ok) throw new Error('Неверный токен');
+    const data = await res.json();
     setToken(token);
     hideAuthModal();
-    loadPackages();
+    $('#user-token').value = token;
+    $('#user-name').textContent = data.username;
+    await loadPackages();
   } catch (e) {
     $('#auth-error').textContent = e.message;
     $('#auth-error').classList.remove('hidden');
   }
 }
 
+// ---- ИНИЦИАЛИЗАЦИЯ (единственная init) ----
 function init() {
   // Вкладки аутентификации
   $('#tab-register').addEventListener('click', () => {
@@ -429,47 +527,51 @@ function init() {
   $('#register-btn').addEventListener('click', handleRegister);
   $('#login-btn').addEventListener('click', handleLogin);
 
-  // Проверка токена при загрузке
-  checkAuth().then(isAuth => {
-    if (isAuth) {
-      // Если уже авторизован — загружаем пакеты при первом открытии платформы
-      // (loadPackages вызывается по кнопке 'Открыть платформу')
-    }
-  });
-
-  $('#start-btn').addEventListener('click', () => {
+  // Кнопка "Открыть платформу": показываем рабочую область.
+  // Пакеты грузим только если авторизованы (иначе — модалка входа).
+  $('#start-btn').addEventListener('click', async () => {
     $('#hero-screen').classList.add('hidden');
     $('#workspace-screen').classList.remove('hidden');
-    loadPackages();
-    // Подставляем токен и ник в профиль (на случай, если checkAuth не сработал)
     const token = getToken();
     if (token) {
       $('#user-token').value = token;
+      await loadPackages();
+      await loadHistory();
+    } else {
+      showAuthModal();
     }
   });
+
+  // Закрыть панель графика
+  $('#ecg-chart-close').addEventListener('click', hideEcgChart);
 
   $('#back-to-hero').addEventListener('click', () => {
     $('#workspace-screen').classList.add('hidden');
     $('#hero-screen').classList.remove('hidden');
   });
 
+  // Чат
   $('#send-btn').addEventListener('click', handleSend);
   $('#chat-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') handleSend();
   });
 
+  // Оценка и перегенерация
   document.querySelectorAll('.grade-btn').forEach(btn => {
     btn.addEventListener('click', () => handleGrade(parseInt(btn.dataset.grade)));
   });
-
   $('#regenerate-btn').addEventListener('click', handleRegenerate);
+
+  // Анализ выбранного пакета
   $('#analyze-btn').addEventListener('click', handleAnalyze);
 
+  // Кастомный дропдаун
   $('#package-select-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     toggleOptions();
   });
 
+  // Закрытие списка при клике вне его
   document.addEventListener('click', (e) => {
     const wrapper = document.querySelector('.custom-select-wrapper');
     if (wrapper && !wrapper.contains(e.target)) {
@@ -478,36 +580,45 @@ function init() {
     }
   });
 
+  // Новый чат
   $('#new-chat-btn').addEventListener('click', () => {
     state.sessionId = null;
     state.currentResponseId = null;
     $('#chat-container').innerHTML = '<div class="message bot">Здравствуйте! Выберите пакет ЭКГ и задайте вопрос.</div>';
-    $('#history-list').innerHTML = '<p class="empty-history">История пуста</p>';
     showGradeActions(false);
     showRegenerateAction(false);
+    hideEcgChart();
+    loadHistory();
   });
 
-  // Заполняем токен при загрузке (если он уже есть)
-  const existingToken = getToken();
-  if (existingToken) {
-    $('#user-token').value = existingToken;
-  }
-
-  // Кнопка копирования токена
+  // Копирование токена
   $('#copy-token-btn').addEventListener('click', () => {
     const token = $('#user-token').value;
     if (token) {
       navigator.clipboard.writeText(token);
-      alert('Токен скопирован в буфер обмена!');
+      addMessage('Токен скопирован в буфер обмена.', 'bot');
     }
   });
 
-  // Кнопка выхода
+  // Выход
   $('#logout-btn').addEventListener('click', () => {
     clearToken();
     $('#user-token').value = '';
     $('#user-name').textContent = 'Пользователь';
     showAuthModal();
+  });
+
+  // Подставляем существующий токен в профиль (если есть)
+  const existingToken = getToken();
+  if (existingToken) {
+    $('#user-token').value = existingToken;
+  }
+
+  // Проверяем токен при загрузке. Если валиден — грузим пакеты.
+  checkAuth().then(isAuth => {
+    if (isAuth) {
+      loadPackages();
+    }
   });
 }
 

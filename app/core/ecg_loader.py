@@ -2,6 +2,7 @@ import os
 import glob
 import wfdb
 import logging
+from datetime import datetime
 from typing import List, Dict, Any
 import numpy as np
 
@@ -135,7 +136,11 @@ class ECGLoader:
             if record.p_signal is None:
                 logger.warning(f"⚠️ Нет p_signal для {pkg_name}")
                 return None, None
-            raw = record.p_signal  # все каналы, все отсчеты
+            raw = record.p_signal  # wfdb: [N_samples, n_sig]
+            # Контракт пайплайна — [C, N]. wfdb отдаёт [N, C], поэтому
+            # приводим к [C, N] здесь, на границе загрузки (единая точка).
+            if raw.ndim == 2:
+                raw = raw.T
             fs = record.fs
             logger.info(f"📥 Загружен raw: {pkg_name} (shape={raw.shape}, fs={fs})")
             return raw, fs
@@ -146,5 +151,3 @@ class ECGLoader:
 
 # Глобальный экземпляр
 ecg_loader = ECGLoader()
-
-from datetime import datetime

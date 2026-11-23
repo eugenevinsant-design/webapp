@@ -9,6 +9,24 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
+async def test_chat_requires_auth_401(anon_client: AsyncClient):
+    """Без Bearer-токена chat-эндпоинт возвращает строго 401."""
+    response = await anon_client.post("/api/chat/", json={"text": "вопрос", "session_id": None})
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_chat_invalid_token_401(anon_client: AsyncClient):
+    """Невалидный Bearer-токен -> 401."""
+    response = await anon_client.post(
+        "/api/chat/",
+        json={"text": "вопрос", "session_id": None},
+        headers={"Authorization": "Bearer deadbeef"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_get_packages(client: AsyncClient):
     """Тест: GET /api/ecg/ возвращает список пакетов."""
     response = await client.get("/api/ecg/")

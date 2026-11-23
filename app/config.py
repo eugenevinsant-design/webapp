@@ -67,6 +67,34 @@ class Settings(BaseSettings):
         description="Секретный ключ для подписи токенов (JWT) в будущем"
     )
 
+    # ---- LLM (vLLM, OpenAI-совместимый сервер) ----
+    LLM_BASE_URL: str = Field(
+        default="http://llm:8000/v1",
+        description="Базовый URL OpenAI-совместимого сервера (vLLM)"
+    )
+    LLM_API_KEY: str = Field(
+        default="",
+        description="API-ключ LLM (для vLLM можно пусто)"
+    )
+    LLM_MODEL: str = Field(
+        default="Qwen/Qwen2.5-7B-Instruct",
+        description="Имя модели на vLLM-сервере"
+    )
+    LLM_TIMEOUT: float = Field(
+        default=120.0,
+        description="Таймаут запроса к LLM, сек"
+    )
+    LLM_FALLBACK_ON_ERROR: bool = Field(
+        default=False,
+        description="True — при ошибке LLM отдавать fallback-текст; False — 503"
+    )
+
+    # ---- ML-бэкенд (анализ сигнала) ----
+    ML_BACKEND: Literal["deterministic", "torch"] = Field(
+        default="deterministic",
+        description="Бэкенд ML: deterministic (scipy) или torch (веса ЭКГ)"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

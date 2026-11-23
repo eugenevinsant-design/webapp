@@ -43,7 +43,32 @@ async def db_session(engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture
 async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
-    """Предоставить TestClient с подмененной БД."""
+    """
+    Предоставить TestClient с подмененной БД и авторизацией.
+
+    Регистрирует тестового пользователя и подставляет его Bearer-токен
+    во все запросы через default headers (ТЗ: chat-эндпоинты требуют auth).
+    """
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # Регистрируем пользователя и получаем токен
+        reg = await ac.post("/api/auth/register", json={"username": "testuser"})
+        assert reg.status_code == 200, reg.text
+        token = reg.json()["api_token"]
+        ac.headers["Authorization"] = f"Bearer {token}"
+        yield ac
+
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def anon_client(db_session) -> AsyncGenerator[AsyncClient, None]:
+    """TestClient без авторизации (для проверки 401)."""
     async def override_get_db():
         yield db_session
 

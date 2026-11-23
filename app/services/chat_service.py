@@ -133,8 +133,10 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
                 message="Ошибка генерации",
             )
     else:
-        # Режим 2: только выбор пакета (БЕЗ записи в БД, только flush)
-        await db.flush()  # фиксируем в сессии, но не commit
+        # Режим 2: только выбор пакета.
+        # Фикс P1: save_prompt_state (commit), а не flush — иначе выбор
+        # теряется при закрытии сессии.
+        await prompt_service.save_prompt_state(db, state)
         return ChatResponse(
             context=f"Пакет '{pkg_name}' выбран. Задайте вопрос по этому сигналу.",
             session_id=session_id,
@@ -156,21 +158,27 @@ async def _handle_question(db: AsyncSession, session_id: int, state, question: s
             can_regenerate=False,
         )
 
-    # 1. Загружаем raw для текущего пакета
-    raw, fs = ecg_loader.load_raw_signal(state.current_raw_pkg_path)
-    if raw is None:
-        available = prompt_service.available_packages_to_schema(ecg_loader.scan_signals())
-        return ChatResponse(
-            context="Не удалось загрузить текущий пакет. Возможно, он был удален.",
-            available_packages=available,
-            can_grade=False,
-            can_regenerate=False,
-        )
+    # Фазовая логика: если аннотация уже построена (context есть),
+    # ML НЕ вызываем — работаем по аннотации (raw=None, фаза B).
+    if state.context:
+        raw = None
+        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+    else:
+        # Фаза A: первая аннотация — единственный вызов ML
+        raw, fs = ecg_loader.load_raw_signal(state.current_raw_pkg_path)
+        if raw is None:
+            available = prompt_service.available_packages_to_schema(ecg_loader.scan_signals())
+            return ChatResponse(
+                context="Не удалось загрузить текущий пакет. Возможно, он был удален.",
+                available_packages=available,
+                can_grade=False,
+                can_regenerate=False,
+            )
+        state.fs = fs
+        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
 
-    # 2. Обновляем question и сохраняем
+    # Обновляем question
     state.question = question
-    state.fs = fs
-    prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
 
     try:
         context = await nn_pipeline.generate_response(prompt_dict)

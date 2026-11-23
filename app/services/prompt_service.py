@@ -63,6 +63,35 @@ async def get_prompt_state(db: AsyncSession, session_id: int) -> Optional[Prompt
     return result.scalar_one_or_none()
 
 
+async def get_user_history(db: AsyncSession, user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+    """Вернуть историю сессий пользователя (последние сверху).
+
+    Каждая запись: session_id, pkg, question, grade, updated_at, excerpt.
+    Источник правды — PromptState в БД (а не in-memory кэш).
+    """
+    result = await db.execute(
+        select(Session, PromptState)
+        .outerjoin(PromptState, PromptState.session_id == Session.id)
+        .where(Session.user_id == user_id)
+        .order_by(Session.updated_at.desc())
+        .limit(limit)
+    )
+
+    history: List[Dict[str, Any]] = []
+    for session, state in result.all():
+        context = (state.context or "") if state else ""
+        excerpt = context.strip().splitlines()[0][:120] if context.strip() else ""
+        history.append({
+            "session_id": session.id,
+            "pkg": state.current_raw_pkg_path if state else None,
+            "question": state.question if state else None,
+            "grade": state.grade if state else None,
+            "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+            "excerpt": excerpt,
+        })
+    return history
+
+
 async def save_prompt_state(db: AsyncSession, state: PromptState) -> None:
     """Сохранить изменения PromptState в БД (commit)."""
     db.add(state)

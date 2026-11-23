@@ -13,7 +13,12 @@ SQLAlchemy-модели для хранения состояния сервис�
 
 from sqlalchemy import Column, Integer, String, Float, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utcnow() -> datetime:
+    """Timezone-aware UTC-время (datetime.utcnow deprecated с Python 3.12)."""
+    return datetime.now(timezone.utc)
 
 # Импортируем Base из database.py, чтобы init_db() (create_all) увидел эти модели.
 # Это техническое условие для выполнения требования ТЗ:
@@ -34,7 +39,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(100), unique=True, nullable=False, index=True)
     api_token = Column(String(255), unique=True, nullable=True, index=True)  # Токен для входа
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
     # Связь один-ко-многим: у пользователя может быть несколько сессий
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
@@ -57,8 +62,8 @@ class Session(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
     # Связь с пользователем
     user = relationship("User", back_populates="sessions")
@@ -110,7 +115,7 @@ class PromptState(Base):
     context = Column(Text, nullable=True)
 
     # Время последнего обновления состояния
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
 
     # Связь с сессией
     session = relationship("Session", back_populates="prompt_state")

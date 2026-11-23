@@ -74,17 +74,20 @@ async def regenerate_response(db: AsyncSession, session_id: int, response_id: in
             can_regenerate=False,
         )
 
-    # Загружаем raw (для NN)
-    raw, fs = ecg_loader.load_raw_signal(state.current_raw_pkg_path)
-    if raw is None:
-        return ChatResponse(
-            context="Ошибка загрузки сигнала для перегенерации.",
-            can_grade=False,
-            can_regenerate=False,
-        )
-
-    # Перегенерация: question и raw не меняются
-    prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+    # Фазовая логика: если аннотация уже есть, перегенерируем ПО АННОТАЦИИ
+    # (raw=None) — ML не вызывается повторно. Иначе (старая сессия) грузим raw.
+    if state.context:
+        raw = None
+        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+    else:
+        raw, fs = ecg_loader.load_raw_signal(state.current_raw_pkg_path)
+        if raw is None:
+            return ChatResponse(
+                context="Ошибка загрузки сигнала для перегенерации.",
+                can_grade=False,
+                can_regenerate=False,
+            )
+        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
     try:
         new_context = await nn_pipeline.generate_response(prompt_dict)
         state.context = new_context

@@ -31,14 +31,22 @@ Base = declarative_base()
 
 # Async-движок с пулом соединений
 # echo=False — не логировать каждый SQL-запрос (в prod включим при необходимости)
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=False,
-    pool_size=settings.POOL_SIZE,
-    max_overflow=settings.MAX_OVERFLOW,
-    pool_pre_ping=True,  # проверять соединение перед использованием (отказоустойчивость)
-    pool_recycle=3600,   # пересоздавать соединения раз в час (избегать таймаутов)
-)
+#
+# SQLite (локальная разработка/тесты) не поддерживает pool_size/max_overflow —
+# там используется NullPool/StaticPool. Для PostgreSQL параметры пула валидны.
+_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+_engine_kwargs = {
+    "echo": False,
+    "pool_pre_ping": True,  # проверять соединение перед использованием (отказоустойчивость)
+}
+if not _is_sqlite:
+    _engine_kwargs.update(
+        pool_size=settings.POOL_SIZE,
+        max_overflow=settings.MAX_OVERFLOW,
+        pool_recycle=3600,  # пересоздавать соединения раз в час (избегать таймаутов)
+    )
+
+engine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs)
 
 # Фабрика сессий
 # expire_on_commit=False — чтобы после commit() объекты оставались доступны

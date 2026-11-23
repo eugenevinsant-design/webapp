@@ -41,9 +41,6 @@ services:
     # image: ghcr.io/asdergh/ecgmetanarrator:latest
     container_name: ecg_backend
     restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       APP_ENV: ${APP_ENV:-dev}
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://ecg_user:ecg_password@postgres:5432/ecg_analyzer}
@@ -52,8 +49,19 @@ services:
       POOL_SIZE: ${POOL_SIZE:-10}
       MAX_OVERFLOW: ${MAX_OVERFLOW:-20}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://llm:8000/v1}
+      LLM_MODEL: ${LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-false}
+      ML_BACKEND: ${ML_BACKEND:-deterministic}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      llm:
+        condition: service_started
     volumes:
       # Монтируем папку с ЭКГ-файлами (чтобы ecg_loader видел данные)
       - ./data/signals:/app/data/signals
@@ -62,8 +70,49 @@ services:
     networks:
       - ecg_network
 
+  # vLLM — OpenAI-совместимый сервер LLM на GPU
+  llm:
+    image: vllm/vllm-openai:latest
+    container_name: ecg_llm
+    restart: always
+    # Доступ к GPU хоста
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      # Кэш HuggingFace (модели скачиваются сюда)
+      - hf_cache:/root/.cache/huggingface
+      # Локальные веса (если модель заранее скачана в ./models)
+      - ./models:/models
+    command: >
+      --model ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      --served-model-name ${LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      --host 0.0.0.0
+      --port ${VLLM_PORT:-8000}
+      --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
+      --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
+      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
+    ports:
+      - "${VLLM_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    networks:
+      - ecg_network
+
 volumes:
   postgres_data:
+    driver: local
+  hf_cache:
     driver: local
 
 networks:

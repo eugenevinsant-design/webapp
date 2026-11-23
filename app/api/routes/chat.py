@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.core.llm_client import LLMError
 from app.schemas.chat import ChatRequest, ChatResponse, GradeRequest, RegenerateRequest
 from app.services import chat_service, grade_service, prompt_service
 from app.api.deps import get_current_user
@@ -19,6 +20,20 @@ from app.models_db import User
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/history")
+async def history_endpoint(
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """История сессий текущего пользователя (из БД, не из памяти)."""
+    try:
+        return await prompt_service.get_user_history(db, current_user.id, limit=limit)
+    except Exception as e:
+        logger.error(f"Ошибка получения истории: {e}")
+        raise HTTPException(status_code=500, detail="Не удалось получить историю")
 
 
 @router.post("/", response_model=ChatResponse)
@@ -37,6 +52,9 @@ async def chat_endpoint(
     """
     try:
         return await chat_service.handle_chat(db, current_user.id, request.text, request.session_id)
+    except LLMError as e:
+        logger.error(f"LLM недоступна в chat_endpoint: {e}")
+        raise HTTPException(status_code=503, detail="LLM-сервис недоступен. Повторите позже.")
     except Exception as e:
         logger.error(f"Ошибка в chat_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {e}")
@@ -56,6 +74,9 @@ async def grade_endpoint(
     """
     try:
         return await grade_service.set_grade(db, session_id, request.response_id, request.grade)
+    except LLMError as e:
+        logger.error(f"LLM недоступна в grade_endpoint: {e}")
+        raise HTTPException(status_code=503, detail="LLM-сервис недоступен. Повторите позже.")
     except Exception as e:
         logger.error(f"Ошибка в grade_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {e}")
@@ -75,6 +96,9 @@ async def regenerate_endpoint(
     """
     try:
         return await grade_service.regenerate_response(db, session_id, request.response_id)
+    except LLMError as e:
+        logger.error(f"LLM недоступна в regenerate_endpoint: {e}")
+        raise HTTPException(status_code=503, detail="LLM-сервис недоступен. Повторите позже.")
     except Exception as e:
         logger.error(f"Ошибка в regenerate_endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка: {e}")

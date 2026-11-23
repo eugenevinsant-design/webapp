@@ -85,6 +85,16 @@
     </aside>
 
     <main class="main-content">
+      <!-- Панель графика ЭКГ -->
+      <div id="ecg-chart-panel" class="ecg-chart-panel hidden">
+        <div class="ecg-chart-head">
+          <span id="ecg-chart-title">Сигнал</span>
+          <span id="ecg-chart-meta" class="ecg-chart-meta"></span>
+          <button id="ecg-chart-close" class="icon-btn" data-tooltip="Скрыть график">✕</button>
+        </div>
+        <canvas id="ecg-chart" height="180"></canvas>
+      </div>
+
       <div class="chat-container" id="chat-container">
         <div class="message bot">Здравствуйте! Выберите пакет ЭКГ и задайте вопрос.</div>
       </div>
@@ -139,6 +149,7 @@
     </div>
   </div>
 
+  <script src="js/vendor/marked.min.js" onerror="window.__markedMissing=true"></script>
   <script src="js/scripts.js"></script>
 </body>
 </html>
