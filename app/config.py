@@ -30,11 +30,13 @@ class Settings(BaseSettings):
     # Режим работы: dev (с --reload) или prod (без --reload)
     APP_ENV: Literal["dev", "prod"] = "dev"
 
-    # Подключение к PostgreSQL (asyncpg)
-    # Пример: postgresql+asyncpg://ecg_user:ecg_password@localhost:5432/ecg_analyzer
+    # Подключение к БД. PostgreSQL (asyncpg) для prod:
+    # postgresql+asyncpg://ecg_user:ecg_password@localhost:5432/ecg_analyzer
+    # Дефолт — SQLite, чтобы приложение поднималось локально без Docker;
+    # в docker-compose DATABASE_URL всё равно передаётся явно (postgres).
     DATABASE_URL: str = Field(
-        default="postgresql+asyncpg://ecg_user:ecg_password@localhost:5432/ecg_analyzer",
-        description="Строка подключения к PostgreSQL (asyncpg)"
+        default="sqlite+aiosqlite:///./dev.db",
+        description="Строка подключения к БД (PostgreSQL asyncpg или SQLite aiosqlite)"
     )
 
     # Путь к папке с ЭКГ-файлами (.hea + .mat)
@@ -84,9 +86,15 @@ class Settings(BaseSettings):
         default=120.0,
         description="Таймаут запроса к LLM, сек"
     )
-    LLM_FALLBACK_ON_ERROR: bool = Field(
-        default=False,
-        description="True — при ошибке LLM отдавать fallback-текст; False — 503"
+    # ---- Интеграция с нашим LLM-модулем (ecgllm) ----
+    LLM_VIA_MODULE: bool = Field(
+        default=True,
+        description="True — вызывать LLM через ecgllm WaveDescriptorInferencePiepeline "
+                    "(setup_llm + process_text); False — напрямую через httpx"
+    )
+    LLM_MAX_TOKENS: int = Field(
+        default=1024,
+        description="max_new_tokens для генерации (GenerationParams)"
     )
 
     # ---- ML-бэкенд (анализ сигнала) ----

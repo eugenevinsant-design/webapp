@@ -22,6 +22,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/llm-status")
+async def llm_status_endpoint():
+    """Статус LLM-интеграции (ecgllm setup_llm/process_text) для UI.
+
+    Без авторизации: отдаёт только параметры подключения (url/model),
+    не секреты.
+    """
+    from app.core import ecgllm_bridge
+    return ecgllm_bridge.llm_status()
+
+
 @router.get("/history")
 async def history_endpoint(
     limit: int = 50,

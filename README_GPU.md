@@ -76,10 +76,12 @@ curl http://localhost:8000/health   # backend на 8000, vLLM на 8000 внут
 `llm_client.py` делает `POST ${LLM_BASE_URL}/chat/completions` с телом
 OpenAI Chat Completions. Для vLLM ничего дополнительно не нужно.
 
-- `LLM_FALLBACK_ON_ERROR=false` (по умолчанию): при недоступности LLM
-  backend возвращает **HTTP 503**, `PromptState` не сохраняется.
-- `LLM_FALLBACK_ON_ERROR=true`: включается fallback-генератор из реальных
-  метрик (сервис остаётся работоспособным без LLM).
+- Fallback-заглушек нет: ответы формирует только LLM. При её
+  недоступности backend возвращает **HTTP 503**, `PromptState` не
+  сохраняется.
+- `LLM_VIA_MODULE=true` (по умолчанию): вызов идёт через наш модуль
+  `ecgllm` (`WaveDescriptorInferencePiepeline.setup_llm` + `process_text`).
+  При `false` — прямой `POST /chat/completions` через httpx, как раньше.
 
 ## 5. Смена модели
 

@@ -695,3 +695,19 @@ h1 span { color: #48e7f5; text-shadow: 0 0 32px #35eaff33; }
   z-index: 100;
   animation: fadeIn 0.2s ease;
 }
+
+/* Статус LLM-интеграции (ecgllm process_text) */
+.llm-status {
+  margin: 12px 0 4px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-radius: 8px;
+  border: 1px solid rgba(95, 191, 220, 0.25);
+  background: rgba(66, 234, 255, 0.06);
+  color: #9fb7c9;
+  word-break: break-all;
+}
+.llm-status.ok { border-color: rgba(53, 196, 141, 0.4); color: #7fd7b5; }
+.llm-status.err { border-color: rgba(239, 93, 108, 0.5); color: #ef9aa3; }
+.llm-status b { color: inherit; }

@@ -53,7 +53,8 @@ services:
       LLM_MODEL: ${LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
-      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-false}
+      LLM_VIA_MODULE: ${LLM_VIA_MODULE:-true}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
       ML_BACKEND: ${ML_BACKEND:-deterministic}
     ports:
       - "${BACKEND_PORT:-8000}:8000"

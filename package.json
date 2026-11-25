@@ -1,0 +1,9 @@
+{
+  "name": "ecg-meta-narrator-webapp",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ECG Meta Narrator: FastAPI backend + static frontend, LLM через ecgllm (setup_llm/process_text)",
+  "scripts": {
+    "dev": "python -m uvicorn app.main:app --host 127.0.0.1 --port 7100"
+  }
+}

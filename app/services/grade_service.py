@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ecg_loader import ecg_loader
+from app.core.llm_client import LLMError
 from app.infrastructure import nn_pipeline
 from app.schemas.chat import ChatResponse
 from app.services import prompt_service
@@ -88,6 +89,10 @@ async def regenerate_response(db: AsyncSession, session_id: int, response_id: in
                 can_regenerate=False,
             )
         prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+
+    # Флаг перегенерации: модель просим дать НОВЫЙ вариант ответа
+    # (другая структура/формулировки, выше температура).
+    prompt_dict["regenerate"] = True
     try:
         new_context = await nn_pipeline.generate_response(prompt_dict)
         state.context = new_context
@@ -104,6 +109,9 @@ async def regenerate_response(db: AsyncSession, session_id: int, response_id: in
             current_pkg=state.current_raw_pkg_path,
             message="Ответ перегенерирован. Оцените новый ответ.",
         )
+    except LLMError:
+        # LLM недоступна: не подменяем ответ заглушкой -> HTTP 503 в роуте
+        raise
     except Exception as e:
         logger.error(f"Ошибка перегенерации: {e}")
         return ChatResponse(

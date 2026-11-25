@@ -75,7 +75,12 @@ async def generate_response(prompt: dict) -> str:
 
     # Фаза B: сигнала нет, но аннотация уже в контексте -> чистый чат с LLM
     if context:
-        return await llm_client.generate_chat_text(question, context=context)
+        return await llm_client.generate_chat_text(
+            question,
+            context=context,
+            regenerate=bool(prompt.get("regenerate")),
+        )
 
-    # Защитный случай: нет ни сигнала, ни аннотации
-    return "Аннотация еще не построена. Уточните пакет командой choose_pkg <pkg>."
+    # Защитный случай: нет ни сигнала, ни аннотации — это не ответ,
+    # а ошибка вызова (роуты отдадут 500; заглушек-текстов нет)
+    raise ValueError("generate_response: нет ни raw (фаза A), ни context (фаза B)")

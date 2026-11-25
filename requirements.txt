@@ -10,6 +10,7 @@ python-multipart==0.0.20
 aiofiles==24.1.0
 markdown==3.7
 httpx==0.28.1
+openai>=1.50,<4
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
 alembic==1.14.0

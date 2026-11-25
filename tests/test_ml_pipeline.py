@@ -99,7 +99,7 @@ def test_ml_adapter_full_contract():
     raw = _synthetic_ecg(hr_bpm=60.0)
     out = ml_adapter.analyze_signal(raw, 500.0)
 
-    for key in ("model", "statistics", "anomalies", "annotation_json", "annotation_md"):
+    for key in ("model", "statistics", "anomalies", "annotation_json"):
         assert key in out, f"нет ключа {key} в контракте"
 
     st = out["statistics"]
@@ -110,7 +110,7 @@ def test_ml_adapter_full_contract():
     assert st["n_leads"] == 1
     assert st["n_samples"] == 5000
     assert st["duration_s"] == pytest.approx(10.0, abs=0.01)
-    assert isinstance(out["annotation_md"], str) and out["annotation_md"].strip()
+    assert out["annotation_json"]["statistics"] == st
 
 
 def test_ml_adapter_detects_tachycardia():
@@ -161,5 +161,5 @@ async def test_real_signal_end_to_end_ml():
     out = ml_adapter.analyze_signal(raw, fs)
     assert out["model"] == "deterministic"
     assert out["statistics"]["n_leads"] == raw.shape[0]
-    # главное: анализ не упал и вернул Markdown-аннотацию
-    assert out["annotation_md"]
+    # главное: анализ не упал и вернул структурированные факты для LLM
+    assert out["annotation_json"]["statistics"]

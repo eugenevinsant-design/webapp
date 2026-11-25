@@ -15,6 +15,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ecg_loader import ecg_loader
+from app.core.llm_client import LLMError
 from app.infrastructure import nn_pipeline
 from app.schemas.chat import ChatResponse, AvailablePackage
 from app.services.resolver_service import parse_command
@@ -124,6 +125,10 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
                 current_pkg=pkg_name,
                 message=f"Пакет '{pkg_name}' выбран. Ответ сгенерирован.",
             )
+        except LLMError:
+            # LLM недоступна: НЕ подменяем ответ заглушкой,
+            # пробрасываем в роут -> HTTP 503 (PromptState не сохраняется)
+            raise
         except Exception as e:
             logger.error(f"Ошибка генерации: {e}")
             return ChatResponse(
@@ -158,6 +163,10 @@ async def _handle_question(db: AsyncSession, session_id: int, state, question: s
             can_regenerate=False,
         )
 
+    # Вопрос обновляем ДО сборки prompt_dict — иначе в модель уходит
+    # предыдущий вопрос (или пустая строка), и LLM не видит сообщение.
+    state.question = question
+
     # Фазовая логика: если аннотация уже построена (context есть),
     # ML НЕ вызываем — работаем по аннотации (raw=None, фаза B).
     if state.context:
@@ -177,9 +186,6 @@ async def _handle_question(db: AsyncSession, session_id: int, state, question: s
         state.fs = fs
         prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
 
-    # Обновляем question
-    state.question = question
-
     try:
         context = await nn_pipeline.generate_response(prompt_dict)
         state.context = context
@@ -195,6 +201,9 @@ async def _handle_question(db: AsyncSession, session_id: int, state, question: s
             current_pkg=state.current_raw_pkg_path,
             message="Ответ сгенерирован.",
         )
+    except LLMError:
+        # LLM недоступна: НЕ подменяем ответ заглушкой -> HTTP 503 в роуте
+        raise
     except Exception as e:
         logger.error(f"Ошибка генерации: {e}")
         return ChatResponse(

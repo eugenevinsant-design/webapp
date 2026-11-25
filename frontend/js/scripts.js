@@ -327,6 +327,25 @@ async function loadPackages() {
   }
 }
 
+// ---- Статус LLM (ecgllm setup_llm/process_text) ----
+async function loadLlmStatus() {
+  const el = $('#llm-status');
+  if (!el) return;
+  try {
+    const res = await authFetch(`${API_BASE}/llm-status`);
+    const s = await parseApiResponse(res);
+    const host = (s.url || '').replace(/^https?:\/\//, '').split('/')[0];
+    el.innerHTML = s.via_module
+      ? `LLM через ecgllm process_text<br><b>${escapeHtml(s.model)}</b> @ ${escapeHtml(host)}`
+      : `LLM напрямую (httpx)<br><b>${escapeHtml(s.model)}</b> @ ${escapeHtml(host)}`;
+    el.classList.toggle('ok', !!s.api_key_set || host.startsWith('llm') || host.startsWith('localhost') || host.startsWith('127.'));
+    el.title = `url: ${s.url}\napi_key: ${s.api_key_set ? 'задан' : 'не задан'}\nmax_tokens: ${s.max_tokens}`;
+  } catch (e) {
+    el.textContent = 'LLM: статус недоступен';
+    el.classList.add('err');
+  }
+}
+
 // ---- Обработчики ----
 async function handleAnalyze() {
   const pkgName = selectedPackage;
@@ -536,6 +555,7 @@ function init() {
   $('#start-btn').addEventListener('click', async () => {
     $('#hero-screen').classList.add('hidden');
     $('#workspace-screen').classList.remove('hidden');
+    loadLlmStatus();
     const token = getToken();
     if (token) {
       $('#user-token').value = token;

@@ -11,8 +11,10 @@
         "statistics": dict,
         "anomalies": [{"type", "severity", "description"}],
         "annotation_json": {...структурированная аннотация...},
-        "annotation_md": str,
     }
+
+Текст ответа ВСЕГДА пишет LLM (app/core/llm_client.py) на основе
+annotation_json — локального fallback-рендера нет.
 """
 
 import logging
@@ -45,38 +47,16 @@ def analyze_with_torch(inp: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def _render_md(annotation: Dict[str, Any]) -> str:
-    """Локальный (fallback) рендер аннотации в Markdown."""
-    st = annotation.get("statistics") or {}
-    lines = ["## Аннотация сигнала", ""]
-    hr = st.get("hr_bpm")
-    lines.append(f"- **ЧСС:** {hr if hr is not None else 'не определена'} уд/мин")
-    if st.get("rr_mean_ms") is not None:
-        lines.append(f"- **Средний RR:** {st['rr_mean_ms']} мс")
-    if st.get("sdnn_ms") is not None:
-        lines.append(f"- **SDNN:** {st['sdnn_ms']} мс")
-    if st.get("rmssd_ms") is not None:
-        lines.append(f"- **RMSSD:** {st['rmssd_ms']} мс")
-    lines.append(f"- **Длительность записи:** {st.get('duration_s')} с ({st.get('n_leads')} отвед.)")
-    lines.append("")
-    anomalies = annotation.get("anomalies") or []
-    if anomalies:
-        lines.append(f"### Найдено аномалий: {len(anomalies)}")
-        for a in anomalies:
-            lines.append(f"- **{a['type']}** ({a['severity']}): {a['description']}")
-    else:
-        lines.append("### Аномалий не обнаружено")
-        lines.append("Ритм регулярный, частота в пределах нормы.")
-    return "\n".join(lines)
-
-
 def analyze_signal(raw, fs: float) -> Dict[str, Any]:
     """
-    Полный конвейер фазы A: сырой сигнал -> аннотация.
+    Полный конвейер фазы A: сырой сигнал -> структурированные факты.
 
     Не бросает исключений наружу, кроме критических (плохой вход):
     ошибки детерминированного бэка логируются и превращаются в аннотацию
     с флагом low_quality, чтобы сессия не падала.
+
+    Текст для пользователя здесь НЕ формируется — это делает LLM
+    по annotation_json (см. llm_client.generate_annotation_text).
     """
     backend = settings.ML_BACKEND.lower().strip()
     if backend == "torch":
@@ -94,5 +74,4 @@ def analyze_signal(raw, fs: float) -> Dict[str, Any]:
     return {
         **result,
         "annotation_json": annotation,
-        "annotation_md": _render_md(annotation),
     }

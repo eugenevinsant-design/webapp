@@ -35,7 +35,6 @@ class Spy:
                                "n_samples": 1000, "duration_s": 10.0, "fs": 100.0},
                 "anomalies": [],
             },
-            "annotation_md": "## Аннотация ЭКГ\nЧСС 75.0 уд/мин",
         }
 
 
