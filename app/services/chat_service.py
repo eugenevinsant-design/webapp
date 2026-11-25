@@ -7,6 +7,10 @@ ChatService: оркестрация режимов 1-3 из ТЗ.
 3. Обычный текст: ответ модели по current_raw_pkg.
 
 Режим 4 (оценка + перегенерация) — в grade_service.py.
+
+ProductVesrsion0.3: состояние живёт в pending_store (память), в БД
+(prompt_states) здесь НИЧЕГО не пишется — запись произойдёт только
+после оценки пользователя (grade_service -> db_writer).
 """
 
 import logging
@@ -17,9 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ecg_loader import ecg_loader
 from app.core.llm_client import LLMError
 from app.infrastructure import nn_pipeline
-from app.schemas.chat import ChatResponse, AvailablePackage
+from app.schemas.chat import ChatResponse
 from app.services.resolver_service import parse_command
 from app.services import prompt_service
+from app.services.pending_store import pending_store, to_prompt_dict, PendingState
 
 logger = logging.getLogger(__name__)
 
@@ -29,35 +34,37 @@ async def handle_chat(db: AsyncSession, user_id: int, text: str, session_id: Opt
     Обработать сообщение пользователя (Режимы 1-3).
 
     Args:
-        db: сессия БД.
+        db: сессия БД (только для sessions и гидрации pending-состояния).
+        user_id: ID авторизованного пользователя.
         text: текст от пользователя (может содержать \choose_pkg).
         session_id: ID сессии (или None для создания новой).
 
     Returns:
         ChatResponse: ответ для UI.
     """
-    # 1. Получаем или создаем сессию и PromptState
+    # 1. Получаем или создаем сессию (строка sessions — это «информация
+    #    о сессии», она не является данными анализа и создаётся сразу)
     session = await prompt_service.get_or_create_session(db, user_id, session_id)
-    state = await prompt_service.get_prompt_state(db, session.id)
-    if not state:
-        # Если по какой-то причине PromptState не создался, создаем
-        from app.models_db import PromptState
-        state = PromptState(session_id=session.id)
-        db.add(state)
-        await db.flush()
 
-    # 2. Парсим команду
-    parsed = parse_command(text)
+    # 2. Состояние prompt — из памяти (или гидрация из БД после рестарта).
+    #    Лок на сессию: параллельные запросы одного пользователя не
+    #    перемешают question/context.
+    lock = await pending_store.get_lock(session.id)
+    async with lock:
+        state = await pending_store.get(db, user_id, session.id)
 
-    # 3. Обработка команды \choose_pkg (Режимы 1-2)
-    if parsed.command == "choose_pkg":
-        return await _handle_choose_pkg(db, session.id, state, parsed, text)
+        # 3. Парсим команду
+        parsed = parse_command(text)
 
-    # 4. Обработка обычного текста (Режим 3)
-    if parsed.clean_text:
-        return await _handle_question(db, session.id, state, parsed.clean_text)
+        # 4. Обработка команды \choose_pkg (Режимы 1-2)
+        if parsed.command == "choose_pkg":
+            return await _handle_choose_pkg(session.id, state, parsed)
 
-    # 5. Пустой текст
+        # 5. Обработка обычного текста (Режим 3)
+        if parsed.clean_text:
+            return await _handle_question(session.id, state, parsed.clean_text)
+
+    # 6. Пустой текст
     return ChatResponse(
         context="Пожалуйста, введите вопрос или команду \\choose_pkg <pkg>.",
         can_grade=False,
@@ -65,11 +72,11 @@ async def handle_chat(db: AsyncSession, user_id: int, text: str, session_id: Opt
     )
 
 
-async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, original_text: str) -> ChatResponse:
+async def _handle_choose_pkg(session_id: int, state: PendingState, parsed) -> ChatResponse:
     """
     Обработка режимов 1 и 2 (выбор пакета).
 
-    Атомарность: если пакет не найден, prompt НЕ меняется.
+    Атомарность: если пакет не найден, состояние НЕ меняется.
     """
     pkg_name = parsed.argument
 
@@ -78,7 +85,6 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
     pkg_exists = any(p["name"] == pkg_name or str(p["id"]) == pkg_name for p in packages)
 
     if not pkg_exists:
-        # Атомарность: возвращаем список, не трогая state
         logger.warning(f"Пакет {pkg_name} не найден")
         available = prompt_service.available_packages_to_schema(packages)
         return ChatResponse(
@@ -92,7 +98,6 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
     # 2. Загружаем raw и fs через wfdb
     raw, fs = ecg_loader.load_raw_signal(pkg_name)
     if raw is None:
-        # Ошибка загрузки — атомарность
         available = prompt_service.available_packages_to_schema(packages)
         return ChatResponse(
             context=f"Ошибка загрузки пакета '{pkg_name}'.",
@@ -102,22 +107,27 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
             message=f"Ошибка загрузки пакета '{pkg_name}'",
         )
 
-    # 3. Обновляем PromptState (атомарно, после успешной валидации)
-    state.current_raw_pkg_path = pkg_name
+    # 3. Обновляем состояние в памяти (атомарно, после успешной валидации)
+    state.pkg_path = pkg_name
     state.fs = fs
     state.question = parsed.clean_text if parsed.clean_text else None
+    state.touch()
 
     # 4. Если есть текст (Режим 1) — генерируем ответ
     if parsed.clean_text:
-        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+        prompt_dict = to_prompt_dict(state, raw=raw)
         try:
-            context = await nn_pipeline.generate_response(prompt_dict)
-            state.context = context
-            state.grade = None  # сброс оценки
-            await prompt_service.save_prompt_state(db, state)
+            result = await nn_pipeline.generate_response_full(prompt_dict)
+            state.context = result["text"]
+            if result.get("description"):
+                # ML-«факты» о сигнале (заполняется в фазе A один раз)
+                state.description = result["description"]
+            state.grade = None      # сброс оценки — ждём новую
+            state.version += 1      # response_id для привязки оценки
+            state.touch()
             return ChatResponse(
-                context=context,
-                response_id=state.id,
+                context=state.context,
+                response_id=state.version,
                 session_id=session_id,
                 grade=None,
                 can_grade=True,  # можно оценить
@@ -126,8 +136,7 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
                 message=f"Пакет '{pkg_name}' выбран. Ответ сгенерирован.",
             )
         except LLMError:
-            # LLM недоступна: НЕ подменяем ответ заглушкой,
-            # пробрасываем в роут -> HTTP 503 (PromptState не сохраняется)
+            # LLM недоступна: НЕ подменяем ответ заглушкой -> HTTP 503 в роуте
             raise
         except Exception as e:
             logger.error(f"Ошибка генерации: {e}")
@@ -138,10 +147,7 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
                 message="Ошибка генерации",
             )
     else:
-        # Режим 2: только выбор пакета.
-        # Фикс P1: save_prompt_state (commit), а не flush — иначе выбор
-        # теряется при закрытии сессии.
-        await prompt_service.save_prompt_state(db, state)
+        # Режим 2: только выбор пакета (в память, БД не трогаем)
         return ChatResponse(
             context=f"Пакет '{pkg_name}' выбран. Задайте вопрос по этому сигналу.",
             session_id=session_id,
@@ -152,11 +158,11 @@ async def _handle_choose_pkg(db: AsyncSession, session_id: int, state, parsed, o
         )
 
 
-async def _handle_question(db: AsyncSession, session_id: int, state, question: str) -> ChatResponse:
+async def _handle_question(session_id: int, state: PendingState, question: str) -> ChatResponse:
     """
-    Обработка режима 3 (обычный вопрос по current_raw_pkg).
+    Обработка режима 3 (обычный вопрос по выбранному пакету).
     """
-    if not state.current_raw_pkg_path:
+    if not state.pkg_path:
         return ChatResponse(
             context="Сначала выберите пакет через \\choose_pkg <pkg>.",
             can_grade=False,
@@ -171,10 +177,10 @@ async def _handle_question(db: AsyncSession, session_id: int, state, question: s
     # ML НЕ вызываем — работаем по аннотации (raw=None, фаза B).
     if state.context:
         raw = None
-        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+        prompt_dict = to_prompt_dict(state, raw=raw)
     else:
         # Фаза A: первая аннотация — единственный вызов ML
-        raw, fs = ecg_loader.load_raw_signal(state.current_raw_pkg_path)
+        raw, fs = ecg_loader.load_raw_signal(state.pkg_path)
         if raw is None:
             available = prompt_service.available_packages_to_schema(ecg_loader.scan_signals())
             return ChatResponse(
@@ -184,21 +190,24 @@ async def _handle_question(db: AsyncSession, session_id: int, state, question: s
                 can_regenerate=False,
             )
         state.fs = fs
-        prompt_dict = prompt_service.to_prompt_dict(state, raw=raw)
+        prompt_dict = to_prompt_dict(state, raw=raw)
 
     try:
-        context = await nn_pipeline.generate_response(prompt_dict)
-        state.context = context
+        result = await nn_pipeline.generate_response_full(prompt_dict)
+        state.context = result["text"]
+        if result.get("description"):
+            state.description = result["description"]
         state.grade = None
-        await prompt_service.save_prompt_state(db, state)
+        state.version += 1
+        state.touch()
         return ChatResponse(
-            context=context,
-            response_id=state.id,
+            context=state.context,
+            response_id=state.version,
             session_id=session_id,
             grade=None,
             can_grade=True,
             can_regenerate=False,
-            current_pkg=state.current_raw_pkg_path,
+            current_pkg=state.pkg_path,
             message="Ответ сгенерирован.",
         )
     except LLMError:

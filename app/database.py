@@ -81,9 +81,33 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def _ensure_prompt_state_columns(sync_conn) -> None:
+    """Лёгкая миграция: добавить новые колонки prompt_states в существующую БД.
+
+    create_all не меняет уже существующие таблицы, поэтому для dev.db,
+    созданной до ProductVesrsion0.3, добавляем колонки вручную.
+    ALTER TABLE ADD COLUMN идемпотентен через проверку inspect().
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(sync_conn)
+    if "prompt_states" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("prompt_states")}
+    if "description" not in cols:
+        sync_conn.execute(text("ALTER TABLE prompt_states ADD COLUMN description TEXT"))
+        logger.info("Миграция: добавлена колонка prompt_states.description")
+    if "user_id" not in cols:
+        sync_conn.execute(
+            text("ALTER TABLE prompt_states ADD COLUMN user_id INTEGER REFERENCES users(id)")
+        )
+        logger.info("Миграция: добавлена колонка prompt_states.user_id")
+
+
 async def init_db() -> None:
     """
-    Создать все таблицы в БД (если их нет).
+    Создать все таблицы в БД (если их нет) + дотащить новые колонки
+    в уже существующих таблицах (лёгкая миграция без Alembic).
 
     ВАЖНО: Это временное решение для разработки. В production
     используем Alembic-миграции (см. README_INTEGRATION.md).
@@ -93,6 +117,7 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_prompt_state_columns)
     logger.info(" Таблицы БД созданы/проверены")
 
 

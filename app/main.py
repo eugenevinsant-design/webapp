@@ -8,6 +8,7 @@ import os
 from app.api.routes import ecg, chat, auth
 from app.config import settings
 from app.database import init_db, close_db
+from app.services.db_writer import db_writer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,9 +25,13 @@ async def lifespan(app: FastAPI):
     """
     logger.info(" Запуск приложения: инициализация БД...")
     await init_db()
+    # Асинхронный писатель: записи в prompt_states (после оценки)
+    # идут через очередь — батчами и без блокировки запросов
+    await db_writer.start()
     logger.info(" Приложение готово к работе")
     yield
-    logger.info(" Остановка приложения: закрытие пула соединений...")
+    logger.info(" Остановка приложения: drain очереди записи и закрытие пула...")
+    await db_writer.stop()
     await close_db()
 
 

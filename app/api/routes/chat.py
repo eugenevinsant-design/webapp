@@ -84,7 +84,7 @@ async def grade_endpoint(
     session_id передается как query-параметр (?session_id=1).
     """
     try:
-        return await grade_service.set_grade(db, session_id, request.response_id, request.grade)
+        return await grade_service.set_grade(db, current_user.id, session_id, request.response_id, request.grade)
     except LLMError as e:
         logger.error(f"LLM недоступна в grade_endpoint: {e}")
         raise HTTPException(status_code=503, detail="LLM-сервис недоступен. Повторите позже.")
@@ -106,7 +106,7 @@ async def regenerate_endpoint(
     session_id передается как query-параметр (?session_id=1).
     """
     try:
-        return await grade_service.regenerate_response(db, session_id, request.response_id)
+        return await grade_service.regenerate_response(db, current_user.id, session_id, request.response_id)
     except LLMError as e:
         logger.error(f"LLM недоступна в regenerate_endpoint: {e}")
         raise HTTPException(status_code=503, detail="LLM-сервис недоступен. Повторите позже.")

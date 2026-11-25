@@ -43,22 +43,23 @@ async def get_or_create_session(db: AsyncSession, user_id: int, session_id: Opti
             return session
         logger.warning(f"Сессия {session_id} не найдена для пользователя {user_id}, создаем новую")
 
-    # Создаем новую сессию для конкретного пользователя
+    # Создаем новую сессию для конкретного пользователя.
+    # PromptState НЕ создаём: по правилу ProductVesrsion0.3 запись в
+    # prompt_states появится только после оценки пользователя (через
+    # db_writer). Сессию коммитим сразу — это «информация о сессии» из ТЗ
+    # и FK-родитель для будущей строки prompt_states.
     new_session = Session(user_id=user_id)
     db.add(new_session)
-    await db.flush()  # чтобы получить session.id
-
-    # Создаем пустой PromptState для сессии
-    prompt_state = PromptState(session_id=new_session.id)
-    db.add(prompt_state)
-    await db.flush()
+    await db.commit()
+    await db.refresh(new_session)
 
     logger.info(f"✅ Создана новая сессия {new_session.id} для пользователя {user_id}")
     return new_session
 
 
 async def get_prompt_state(db: AsyncSession, session_id: int) -> Optional[PromptState]:
-    """Загрузить PromptState для сессии."""
+    """Загрузить PromptState для сессии (None, если пользователь ещё
+    ничего не оценивал — запись появляется только после оценки)."""
     result = await db.execute(select(PromptState).where(PromptState.session_id == session_id))
     return result.scalar_one_or_none()
 
@@ -85,39 +86,12 @@ async def get_user_history(db: AsyncSession, user_id: int, limit: int = 50) -> L
             "session_id": session.id,
             "pkg": state.current_raw_pkg_path if state else None,
             "question": state.question if state else None,
+            "description": state.description if state else None,
             "grade": state.grade if state else None,
             "updated_at": session.updated_at.isoformat() if session.updated_at else None,
             "excerpt": excerpt,
         })
     return history
-
-
-async def save_prompt_state(db: AsyncSession, state: PromptState) -> None:
-    """Сохранить изменения PromptState в БД (commit)."""
-    db.add(state)
-    await db.commit()
-    await db.refresh(state)
-    logger.info(f"💾 PromptState сохранен (session_id={state.session_id})")
-
-
-def to_prompt_dict(state: PromptState, raw=None) -> Dict[str, Any]:
-    """
-    Собрать prompt-словарь для передачи в NN-пайплайн.
-
-    Args:
-        state: PromptState из БД.
-        raw: ndarray (если нужно передать сигнал) или None.
-
-    Returns:
-        dict: prompt-словарь по контракту ТЗ.
-    """
-    return {
-        "question": state.question or "",
-        "raw": raw,
-        "fs": state.fs,
-        "grade": state.grade,
-        "context": state.context or "",
-    }
 
 
 def available_packages_to_schema(packages: List[Dict[str, Any]]) -> List[AvailablePackage]:

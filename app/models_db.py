@@ -83,19 +83,26 @@ class PromptState(Base):
     - current_raw_pkg_path: путь к файлу ЭКГ (вместо raw, так как ndarray
       нельзя сохранить в реляционную БД)
     - fs: частота дискретизации из header wfdb (None в режиме 2)
+    - description: ML-описание сигнала (JSON с метриками: ЧСС, RR, аномалии) —
+      «данные ML», на основе которых LLM строит ответ
     - grade: оценка ответа модели (0-10, None пока не выставлена)
     - context: сгенерированный моделью ответ
 
-    Режимы заполнения (см. README_ARCHITECTURE.md, раздел 8):
-    - Режим 1: current_raw_pkg_path, fs, question
-    - Режим 2: current_raw_pkg_path (raw/fs = None в контракте, но выбор фиксируется)
-    - Режим 3: question, context
-    - Режим 4: grade, context
+    ВАЖНО (ProductVesrsion0.3): запись в эту таблицу происходит ТОЛЬКО
+    после того, как пользователь выставил оценку (режим 4). До оценки
+    состояние живёт в памяти (app/services/pending_store.py). Запись
+    выполняет асинхронный писатель (app/services/db_writer.py), поэтому
+    строка всегда содержит слепок на момент оценки: user_id + session_id +
+    question + description + context + grade.
     """
     __tablename__ = "prompt_states"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, unique=True, index=True)
+
+    # Владелец сессии — денормализация для быстрых выборок «все действия
+    # пользователя» без JOIN по sessions (user_id + session_id = пара индексов)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     # Текст вопроса пользователя (режимы 1, 3)
     question = Column(Text, nullable=True)
@@ -106,6 +113,11 @@ class PromptState(Base):
 
     # Частота дискретизации из header wfdb (None в режиме 2)
     fs = Column(Float, nullable=True)
+
+    # ML-описание сигнала: JSON-строка с annotation_json из ml_adapter
+    # (statistics: ЧСС/RR/SDNN/RMSSD + anomalies). Это «факты», которые
+    # передаются в LLM. Заполняется в фазе A, дальше не меняется.
+    description = Column(Text, nullable=True)
 
     # Оценка ответа модели (0-10), выставляется пользователем в режиме 4
     # None означает, что оценка еще не выставлена
