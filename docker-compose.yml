@@ -100,7 +100,10 @@ services:
       --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.90}
       --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
     ports:
-      - "${VLLM_PORT:-8000}:8000"
+      # Наружу отдаём на 8001 (дефолт), чтобы не конфликтовать с backend:8000.
+      # Backend ходит к vLLM внутри сети по http://llm:8000 — маппинг нужен
+      # только для отладки с хоста.
+      - "${VLLM_HOST_PORT:-8001}:${VLLM_PORT:-8000}"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
       interval: 30s
