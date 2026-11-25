@@ -35,6 +35,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копируем код приложения
 COPY app/ ./app/
 
+# Копируем наш LLM-модуль (ecgllm: setup_llm + process_text).
+# БЕЗ ЭТОГО контейнер падает с 503 на любом вызове LLM: статус в UI
+# читается из настроек (поэтому выглядит «живым»), а сам вызов падает
+# на import ecgllm — пакета в образе нет.
+COPY ecgllm/ ./ecgllm/
+
 # Копируем Alembic (конфиг + миграции) для управления схемой БД
 COPY alembic.ini .
 COPY alembic/ ./alembic/
