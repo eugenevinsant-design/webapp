@@ -61,8 +61,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      llm:
-        condition: service_started
+      # vLLM (сервис llm) НЕ является зависимостью: LLM может идти через
+      # внешний API (OpenRouter и т.п.). Локальный vLLM поднимается только
+      # явно: docker compose --profile vllm up -d
     volumes:
       # Монтируем папку с ЭКГ-файлами (чтобы ecg_loader видел данные)
       - ./data/signals:/app/data/signals
@@ -71,8 +72,12 @@ services:
     networks:
       - ecg_network
 
-  # vLLM — OpenAI-совместимый сервер LLM на GPU
+  # vLLM — OpenAI-совместимый сервер LLM на GPU.
+  # ВЫКЛЮЧЕН ПО УМОЛЧАНИЮ (профиль "vllm"): сейчас используем внешний API
+  # (OpenRouter), чтобы не качать образ (~10 ГБ) и модель (~15 ГБ).
+  # Поднять локальный vLLM: docker compose --profile vllm up -d --build
   llm:
+    profiles: ["vllm"]
     image: vllm/vllm-openai:latest
     container_name: ecg_llm
     restart: always

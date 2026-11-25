@@ -26,8 +26,8 @@
 1. Клонируйте репозиторий.
 2. Скопируйте `.env.example` в `.env` (`DATABASE_URL` оставьте закомментированным — compose сам подставит postgres).
 3. Задайте `PLATFORM_ACCESS_TOKEN` в `.env` (ваш «пропуск» на сайт).
-4. Запустите контейнеры:
-   `docker compose up -d --build`
+4. Запустите контейнеры (сервис vLLM включается профилем):
+   `docker compose --profile vllm up -d --build`
 5. Откройте в браузере: `http://localhost:8000`
 
 > Первый запуск vLLM скачает модель (~15 ГБ) — это займёт время.
@@ -42,8 +42,8 @@
    LLM_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
    LLM_API_KEY=sk-or-...
    ```
-3. Поднимите только БД и backend (сервис vLLM не нужен):
-   `docker compose up -d --build postgres backend`
+3. Поднимите контейнеры (vLLM не поднимется — он за профилем):
+   `docker compose up -d --build`
 4. Откройте `http://localhost:8000`
 
 ### Вариант C — совсем без Docker (локальная разработка)
