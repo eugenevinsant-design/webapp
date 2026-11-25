@@ -447,8 +447,46 @@ async function handleRegenerate() {
   }
 }
 
-// ---- АУТЕНТИФИКАЦИЯ ----
+// ---- АУТЕНТИФИКАЦИЯ (3 шага: платформа -> регистрация -> вход) ----
+function getPlatformToken() {
+  return localStorage.getItem('platform_token');
+}
+
+function setPlatformToken(token) {
+  localStorage.setItem('platform_token', token);
+}
+
+function showAuthError(msg) {
+  const el = $('#auth-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function hideAuthError() {
+  $('#auth-error').classList.add('hidden');
+}
+
+// Показать конкретный шаг модалки: 'platform' или 'main'
+function showAuthStep(step) {
+  $('#auth-step-platform').classList.toggle('hidden', step !== 'platform');
+  $('#auth-step-main').classList.toggle('hidden', step !== 'main');
+  hideAuthError();
+}
+
+// Переключение вкладок Вход/Регистрация
+function showAuthTab(tab) {
+  const isLogin = tab === 'login';
+  $('#tab-login').classList.toggle('active', isLogin);
+  $('#tab-register').classList.toggle('active', !isLogin);
+  $('#form-login').classList.toggle('hidden', !isLogin);
+  $('#form-register').classList.toggle('hidden', isLogin);
+  $('#register-success').classList.add('hidden');
+  hideAuthError();
+}
+
 function showAuthModal() {
+  // Если токен платформы уже проверен — сразу шаг входа/регистрации
+  showAuthStep(getPlatformToken() ? 'main' : 'platform');
   $('#auth-modal').classList.remove('hidden');
 }
 
@@ -458,7 +496,7 @@ function hideAuthModal() {
 
 async function checkAuth() {
   const token = getToken();
-  if (!token) {
+  if (!token || !getPlatformToken()) {
     showAuthModal();
     return false;
   }
@@ -480,75 +518,114 @@ async function checkAuth() {
   }
 }
 
+// Шаг 1: проверка токена доступа к платформе
+async function handlePlatformAccess() {
+  const platformToken = $('#platform-token-input').value.trim();
+  if (!platformToken) {
+    showAuthError('Введите токен доступа к платформе');
+    return;
+  }
+  try {
+    const res = await fetch(`${AUTH_BASE}/platform-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform_token: platformToken })
+    });
+    if (res.status === 403) throw new Error('Неверный токен доступа к платформе');
+    if (!res.ok) throw new Error('Ошибка сервера: ' + res.status);
+    setPlatformToken(platformToken);
+    showAuthStep('main');
+  } catch (e) {
+    showAuthError(e.message);
+  }
+}
+
+// Шаг 2: регистрация (логин + токен платформы) -> показать личный токен,
+// затем вернуть пользователя на экран входа
 async function handleRegister() {
   const username = $('#register-username').value.trim();
   if (username.length < 3) {
-    $('#auth-error').textContent = 'Ник должен быть не короче 3 символов';
-    $('#auth-error').classList.remove('hidden');
+    showAuthError('Логин должен быть не короче 3 символов');
     return;
   }
   try {
     const res = await fetch(`${AUTH_BASE}/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ username, platform_token: getPlatformToken() })
     });
+    if (res.status === 403) throw new Error('Токен платформы недействителен. Обновите страницу.');
     if (!res.ok) throw new Error('Ошибка регистрации: ' + res.status);
     const data = await res.json();
-    setToken(data.api_token);
-    hideAuthModal();
-    $('#user-token').value = data.api_token;
-    $('#user-name').textContent = data.username;
-    addMessage(`Регистрация успешна. Добро пожаловать, ${data.username}! Токен сохранён в браузере.`, 'bot');
-    await loadPackages();
+
+    // Показываем личный токен ОДИН раз, вход — только через форму входа
+    $('#register-token-value').value = data.api_token;
+    $('#form-register').classList.add('hidden');
+    $('#register-success').classList.remove('hidden');
+    // Запомним логин, чтобы подставить в форму входа
+    $('#login-username').value = data.username;
+    hideAuthError();
   } catch (e) {
-    $('#auth-error').textContent = e.message;
-    $('#auth-error').classList.remove('hidden');
+    showAuthError(e.message);
   }
 }
 
+// Шаг 3: вход по паре логин + личный токен
 async function handleLogin() {
+  const username = $('#login-username').value.trim();
   const token = $('#login-token').value.trim();
-  if (!token) {
-    $('#auth-error').textContent = 'Введите токен';
-    $('#auth-error').classList.remove('hidden');
+  if (!username || !token) {
+    showAuthError('Введите логин и личный токен');
     return;
   }
   try {
-    const res = await fetch(`${AUTH_BASE}/me`, {
-      headers: { 'Authorization': `Bearer ${token}` }
+    const res = await fetch(`${AUTH_BASE}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, token })
     });
-    if (!res.ok) throw new Error('Неверный токен');
+    if (res.status === 401) throw new Error('Неверный логин или токен');
+    if (!res.ok) throw new Error('Ошибка сервера: ' + res.status);
     const data = await res.json();
     setToken(token);
     hideAuthModal();
     $('#user-token').value = token;
     $('#user-name').textContent = data.username;
+    addMessage(`С возвращением, ${data.username}!`, 'bot');
     await loadPackages();
+    await loadHistory();
   } catch (e) {
-    $('#auth-error').textContent = e.message;
-    $('#auth-error').classList.remove('hidden');
+    showAuthError(e.message);
   }
 }
 
 // ---- ИНИЦИАЛИЗАЦИЯ (единственная init) ----
 function init() {
-  // Вкладки аутентификации
-  $('#tab-register').addEventListener('click', () => {
-    $('#tab-register').classList.add('active');
-    $('#tab-login').classList.remove('active');
-    $('#form-register').classList.remove('hidden');
-    $('#form-login').classList.add('hidden');
+  // Шаг 1: токен доступа к платформе
+  $('#platform-access-btn').addEventListener('click', handlePlatformAccess);
+  $('#platform-token-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handlePlatformAccess();
   });
-  $('#tab-login').addEventListener('click', () => {
-    $('#tab-login').classList.add('active');
-    $('#tab-register').classList.remove('active');
-    $('#form-login').classList.remove('hidden');
-    $('#form-register').classList.add('hidden');
-  });
+
+  // Вкладки Вход/Регистрация (шаги 2-3)
+  $('#tab-login').addEventListener('click', () => showAuthTab('login'));
+  $('#tab-register').addEventListener('click', () => showAuthTab('register'));
 
   $('#register-btn').addEventListener('click', handleRegister);
   $('#login-btn').addEventListener('click', handleLogin);
+  $('#login-token').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleLogin();
+  });
+
+  // После регистрации: копирование токена и возврат на экран входа
+  $('#register-token-copy').addEventListener('click', () => {
+    const token = $('#register-token-value').value;
+    if (token) navigator.clipboard.writeText(token);
+  });
+  $('#go-to-login-btn').addEventListener('click', () => {
+    $('#register-success').classList.add('hidden');
+    showAuthTab('login');
+  });
 
   // Кнопка "Открыть платформу": показываем рабочую область.
   // Пакеты грузим только если авторизованы (иначе — модалка входа).
@@ -624,7 +701,7 @@ function init() {
     }
   });
 
-  // Выход
+  // Выход (токен платформы сохраняется — «пропуск» уже проверен)
   $('#logout-btn').addEventListener('click', () => {
     clearToken();
     $('#user-token').value = '';

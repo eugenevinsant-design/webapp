@@ -30,6 +30,9 @@ from app.services.pending_store import pending_store
 # Используем SQLite in-memory для тестов (быстро, не требует PostgreSQL)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
+# Токен платформы, который сидится в тестовую БД (шаг 1 входа)
+TEST_PLATFORM_TOKEN = "test-platform-token"
+
 
 @pytest_asyncio.fixture(scope="session")
 async def engine():
@@ -42,6 +45,14 @@ async def engine():
     )
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Сидим токен доступа к платформе (в проде это делает init_db из .env)
+    from sqlalchemy import text
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("INSERT INTO platform_tokens (token, label, is_active, created_at) "
+                 "VALUES (:t, 'test-seed', 1, CURRENT_TIMESTAMP)"),
+            {"t": TEST_PLATFORM_TOKEN},
+        )
     yield engine
     await engine.dispose()
 
@@ -86,8 +97,12 @@ async def client(db_session) -> AsyncGenerator[AsyncClient, None]:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        # Регистрируем пользователя и получаем токен
-        reg = await ac.post("/api/auth/register", json={"username": "testuser"})
+        # Регистрируем пользователя (шаг 2: логин + токен платформы)
+        import uuid
+        reg = await ac.post("/api/auth/register", json={
+            "username": f"testuser-{uuid.uuid4().hex[:8]}",
+            "platform_token": TEST_PLATFORM_TOKEN,
+        })
         assert reg.status_code == 200, reg.text
         token = reg.json()["api_token"]
         ac.headers["Authorization"] = f"Bearer {token}"

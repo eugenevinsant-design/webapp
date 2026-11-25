@@ -126,27 +126,50 @@
     </main>
   </section>
 
-  <!-- МОДАЛЬНОЕ ОКНО АУТЕНТИФИКАЦИИ -->
+  <!-- МОДАЛЬНОЕ ОКНО АУТЕНТИФИКАЦИИ (3 шага: платформа -> регистрация -> вход) -->
   <div id="auth-modal" class="modal hidden">
     <div class="modal-content">
-      <h2>Вход в систему</h2>
-      <p class="modal-subtitle">Введите ник для регистрации или ваш токен для входа.</p>
-      
-      <div class="auth-tabs">
-        <button id="tab-register" class="auth-tab active">Регистрация</button>
-        <button id="tab-login" class="auth-tab">Вход</button>
+
+      <!-- ШАГ 1: токен доступа к платформе -->
+      <div id="auth-step-platform">
+        <h2>Доступ к платформе</h2>
+        <p class="modal-subtitle">Введите токен доступа к платформе, чтобы продолжить.</p>
+        <input type="password" id="platform-token-input" placeholder="Токен доступа к платформе" class="auth-input" autocomplete="off">
+        <button id="platform-access-btn" class="cta" style="width:100%; margin-top:16px;">Продолжить →</button>
       </div>
 
-      <!-- Форма регистрации -->
-      <div id="form-register" class="auth-form">
-        <input type="text" id="register-username" placeholder="Ваш ник (мин. 3 символа)" class="auth-input">
-        <button id="register-btn" class="cta" style="width:100%; margin-top:16px;">Создать аккаунт</button>
-      </div>
+      <!-- ШАГИ 2-3: регистрация / вход -->
+      <div id="auth-step-main" class="hidden">
+        <h2>Вход в систему</h2>
+        <p class="modal-subtitle">Зарегистрируйтесь и получите личный токен, либо войдите по логину и токену.</p>
 
-      <!-- Форма входа -->
-      <div id="form-login" class="auth-form hidden">
-        <input type="text" id="login-token" placeholder="Вставьте ваш токен" class="auth-input">
-        <button id="login-btn" class="cta" style="width:100%; margin-top:16px;">Войти</button>
+        <div class="auth-tabs">
+          <button id="tab-login" class="auth-tab active">Вход</button>
+          <button id="tab-register" class="auth-tab">Регистрация</button>
+        </div>
+
+        <!-- Форма входа (шаг 3): логин + личный токен -->
+        <div id="form-login" class="auth-form">
+          <input type="text" id="login-username" placeholder="Ваш логин" class="auth-input" autocomplete="off">
+          <input type="password" id="login-token" placeholder="Ваш личный токен" class="auth-input" autocomplete="off">
+          <button id="login-btn" class="cta" style="width:100%; margin-top:16px;">Войти</button>
+        </div>
+
+        <!-- Форма регистрации (шаг 2): только логин -->
+        <div id="form-register" class="auth-form hidden">
+          <input type="text" id="register-username" placeholder="Придумайте логин (мин. 3 символа)" class="auth-input" autocomplete="off">
+          <button id="register-btn" class="cta" style="width:100%; margin-top:16px;">Зарегистрироваться</button>
+        </div>
+
+        <!-- Успешная регистрация: показ личного токена -->
+        <div id="register-success" class="auth-form hidden">
+          <p class="modal-subtitle">Аккаунт создан! Сохраните ваш личный токен — он показывается один раз и нужен для входа:</p>
+          <div class="token-display">
+            <input type="text" id="register-token-value" readonly class="auth-input token-value">
+            <button id="register-token-copy" class="icon-btn" data-tooltip="Скопировать токен">📋</button>
+          </div>
+          <button id="go-to-login-btn" class="cta" style="width:100%; margin-top:16px;">Перейти ко входу →</button>
+        </div>
       </div>
 
       <p id="auth-error" class="auth-error hidden"></p>

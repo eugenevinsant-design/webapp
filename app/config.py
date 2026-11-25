@@ -69,6 +69,15 @@ class Settings(BaseSettings):
         description="Секретный ключ для подписи токенов (JWT) в будущем"
     )
 
+    # Токен доступа к платформе («пропуск» на сайт). Используется как
+    # бутстреп: при старте записывается в таблицу platform_tokens,
+    # дальше проверка идёт по БД. Без валидного токена платформы
+    # регистрация невозможна.
+    PLATFORM_ACCESS_TOKEN: str = Field(
+        default="dev-platform-token",
+        description="Токен доступа к платформе (сидится в БД при старте)"
+    )
+
     # ---- LLM (vLLM, OpenAI-совместимый сервер) ----
     LLM_BASE_URL: str = Field(
         default="http://llm:8000/v1",

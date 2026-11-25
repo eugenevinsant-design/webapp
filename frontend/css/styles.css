@@ -670,6 +670,22 @@ h1 span { color: #48e7f5; text-shadow: 0 0 32px #35eaff33; }
   border-color: var(--cyan);
   box-shadow: 0 0 10px rgba(66, 234, 255, 0.2);
 }
+/* Блок показа личного токена после регистрации */
+.token-display {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.token-display .token-value {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--cyan);
+  background: rgba(66, 234, 255, 0.06);
+}
+.auth-form .auth-input + .auth-input {
+  margin-top: 10px;
+}
 .auth-error {
   color: #ff4a4a;
   font-size: 12px;

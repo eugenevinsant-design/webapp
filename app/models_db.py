@@ -97,12 +97,16 @@ class PromptState(Base):
     """
     __tablename__ = "prompt_states"
 
+    # Порядок колонок зафиксирован: id -> user_id -> session_id -> ... ->
+    # context -> description -> updated_at (для существующих БД порядок
+    # приводит миграция в database._ensure_prompt_state_columns).
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, unique=True, index=True)
 
     # Владелец сессии — денормализация для быстрых выборок «все действия
     # пользователя» без JOIN по sessions (user_id + session_id = пара индексов)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+
+    session_id = Column(Integer, ForeignKey("sessions.id"), nullable=False, unique=True, index=True)
 
     # Текст вопроса пользователя (режимы 1, 3)
     question = Column(Text, nullable=True)
@@ -114,17 +118,17 @@ class PromptState(Base):
     # Частота дискретизации из header wfdb (None в режиме 2)
     fs = Column(Float, nullable=True)
 
-    # ML-описание сигнала: JSON-строка с annotation_json из ml_adapter
-    # (statistics: ЧСС/RR/SDNN/RMSSD + anomalies). Это «факты», которые
-    # передаются в LLM. Заполняется в фазе A, дальше не меняется.
-    description = Column(Text, nullable=True)
-
     # Оценка ответа модели (0-10), выставляется пользователем в режиме 4
     # None означает, что оценка еще не выставлена
     grade = Column(Integer, nullable=True)
 
     # Сгенерированный моделью ответ (режимы 3, 4)
     context = Column(Text, nullable=True)
+
+    # ML-описание сигнала: JSON-строка с annotation_json из ml_adapter
+    # (statistics: ЧСС/RR/SDNN/RMSSD + anomalies). Это «факты», которые
+    # передаются в LLM. Заполняется в фазе A, дальше не меняется.
+    description = Column(Text, nullable=True)
 
     # Время последнего обновления состояния
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False)
@@ -134,3 +138,29 @@ class PromptState(Base):
 
     def __repr__(self):
         return f"<PromptState(session_id={self.session_id}, question='{self.question[:30] if self.question else None}')>"
+
+
+class PlatformToken(Base):
+    """
+    Токены доступа к платформе («пропуск» на сайт).
+
+    Логика входа (ProductVesrsion0.3):
+    1. Пользователь вводит токен доступа к платформе (один из этой таблицы).
+    2. Затем регистрируется (логин) -> получает ЛИЧНЫЙ api_token (users).
+    3. Входит по паре логин + личный токен.
+
+    Токены хранятся в БД (а не только в .env): их можно добавлять,
+    отзывать (is_active=False) и аудировать. Первый токен сидится из
+    настройки PLATFORM_ACCESS_TOKEN при старте (см. database.init_db).
+    """
+    __tablename__ = "platform_tokens"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    # Человекочитаемая пометка: кому/зачем выдан (например, "admin", "team")
+    label = Column(String(100), nullable=True)
+    is_active = Column(Integer, default=1, nullable=False)  # 1/0 (bool для SQLite/Postgres-совместимости)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    def __repr__(self):
+        return f"<PlatformToken(id={self.id}, label='{self.label}', active={self.is_active})>"
