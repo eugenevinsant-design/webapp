@@ -43,7 +43,10 @@ services:
     restart: always
     environment:
       APP_ENV: ${APP_ENV:-dev}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://ecg_user:ecg_password@postgres:5432/ecg_analyzer}
+      # ВАЖНО: не берём DATABASE_URL из .env! Там sqlite для локального
+      # запуска (uvicorn), а контейнер должен писать в сервис postgres.
+      # Иначе контейнер создаст dev.db ВНУТРИ себя и данные будут невидимы.
+      DATABASE_URL: postgresql+asyncpg://ecg_user:ecg_password@postgres:5432/ecg_analyzer
       SIGNALS_DIR: ${SIGNALS_DIR:-/app/data/signals}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
       POOL_SIZE: ${POOL_SIZE:-10}

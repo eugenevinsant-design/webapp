@@ -56,14 +56,17 @@ app.include_router(ecg.router, prefix="/api/ecg", tags=["ECG"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 
-# Статика
-frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
-if os.path.exists(frontend_path):
-    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
-
+# /health ДО монтирования статики: StaticFiles на "/" перехватывает все
+# пути, поэтому health-роут должен быть зарегистрирован раньше,
+# иначе HEALTHCHECK в Dockerfile всегда получает 404.
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+# Статика (монтируется последней — перехватывает всё остальное)
+frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+if os.path.exists(frontend_path):
+    app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn
