@@ -157,16 +157,19 @@ def _ensure_prompt_state_columns(sync_conn) -> None:
 
 
 def _seed_platform_token(sync_conn) -> None:
-    """Посеять токен доступа к платформе из настроек, если таблица пуста.
+    """Посеять токен доступа к платформе из настроек.
 
     Токены платформы живут в БД (platform_tokens) — их можно добавлять
-    и отзывать без рестарта. PLATFORM_ACCESS_TOKEN из .env — это только
-    бутстреп первого токена.
+    и отзывать без рестарта. PLATFORM_ACCESS_TOKEN из .env добавляется,
+    если его там ещё нет (идемпотентно: перезапуск не дублирует).
     """
     from sqlalchemy import text
 
-    count = sync_conn.execute(text("SELECT COUNT(*) FROM platform_tokens")).scalar()
-    if count:
+    exists = sync_conn.execute(
+        text("SELECT COUNT(*) FROM platform_tokens WHERE token = :t"),
+        {"t": settings.PLATFORM_ACCESS_TOKEN},
+    ).scalar()
+    if exists:
         return
     sync_conn.execute(
         text("INSERT INTO platform_tokens (token, label, is_active, created_at) "

@@ -49,6 +49,7 @@ services:
       POOL_SIZE: ${POOL_SIZE:-10}
       MAX_OVERFLOW: ${MAX_OVERFLOW:-20}
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      PLATFORM_ACCESS_TOKEN: ${PLATFORM_ACCESS_TOKEN:-dev-platform-token}
       LLM_BASE_URL: ${LLM_BASE_URL:-http://llm:8000/v1}
       LLM_MODEL: ${LLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
       LLM_API_KEY: ${LLM_API_KEY:-}
