@@ -1,13 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/index.py" },
-    { "source": "/health", "destination": "/api/index.py" },
-    { "source": "/", "destination": "/frontend/index.html" },
-    { "source": "/css/:path*", "destination": "/frontend/css/:path*" },
-    { "source": "/js/:path*", "destination": "/frontend/js/:path*" },
-    { "source": "/assets/:path*", "destination": "/frontend/assets/:path*" }
-  ],
   "functions": {
     "api/index.py": {
       "maxDuration": 60
