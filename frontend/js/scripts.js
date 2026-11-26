@@ -623,6 +623,8 @@ function init() {
     if (token) navigator.clipboard.writeText(token);
   });
   $('#go-to-login-btn').addEventListener('click', () => {
+    // Подставляем И логин, И свежий токен — остаётся нажать «Войти»
+    $('#login-token').value = $('#register-token-value').value;
     $('#register-success').classList.add('hidden');
     showAuthTab('login');
   });
