@@ -38,8 +38,20 @@ async def test_get_packages(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_chat_mode_1_choose_and_question(client: AsyncClient):
-    """Тест Режима 1: выбор пакета + вопрос."""
+async def test_chat_mode_1_choose_and_question(client: AsyncClient, monkeypatch):
+    """Тест Режима 1: выбор пакета + вопрос.
+
+    LLM замокан: этот тест про API-поток, а не про доступность OpenRouter
+    (сеть в CI/на машине разработчика может быть недоступна).
+    """
+    from app.core import llm_client
+
+    async def fake_llm(*args, **kwargs):
+        return "Тестовая аннотация (LLM замокан)"
+
+    monkeypatch.setattr(llm_client, "generate_annotation_text", fake_llm)
+    monkeypatch.setattr(llm_client, "generate_chat_text", fake_llm)
+
     response = await client.post(
         "/api/chat/",
         json={"text": "\\choose_pkg JS00002 Какие аномалии?", "session_id": None}
