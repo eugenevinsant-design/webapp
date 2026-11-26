@@ -2,10 +2,12 @@
 Загрузчик ЭКГ-сигналов (.hea + .mat).
 
 WFDB-совместимый формат: текстовый заголовок .hea + матрица 'val' в .mat.
-Читаем напрямую через scipy.io.loadmat + минимальный парсер .hea —
-это численно идентично wfdb.rdrecord (p_signal = (val - baseline) / adc_gain),
-но не тянет wfdb/pandas/matplotlib (~150 МБ), что критично для
-serverless-деплоя (лимит Vercel — 250 МБ на функцию).
+
+Основной путь — wfdb.rdrecord (каноническая библиотека для WFDB-записей).
+Если wfdb не установлен (например, serverless-деплой на Vercel, где лимит
+250 МБ на функцию не вмещает wfdb+pandas+matplotlib), используется fallback:
+scipy.io.loadmat + минимальный парсер .hea — численно идентичен wfdb
+(p_signal = (val - baseline) / adc_gain, проверено np.allclose в тестах).
 
 Формат первой строки .hea:
     <name> <n_sig> <fs> <sig_len> ...
@@ -22,9 +24,16 @@ from datetime import datetime
 from typing import List, Dict, Any, Tuple
 
 import numpy as np
-from scipy.io import loadmat
 
 logger = logging.getLogger(__name__)
+
+try:
+    import wfdb  # канонический путь (Docker/сервер)
+    _HAS_WFDB = True
+    logger.info("📦 ecg_loader: используется wfdb")
+except ImportError:  # serverless (Vercel): wfdb не влезает в лимит 250 МБ
+    _HAS_WFDB = False
+    logger.info("📦 ecg_loader: wfdb не найден, fallback на scipy.io.loadmat")
 
 
 def _parse_hea(hea_path: str) -> Tuple[float, int, int, List[Dict[str, Any]]]:
@@ -59,11 +68,10 @@ def _parse_hea(hea_path: str) -> Tuple[float, int, int, List[Dict[str, Any]]]:
     return fs, n_sig, sig_len, channels
 
 
-def read_record(signals_dir: str, base_name: str):
-    """Прочитать запись: (p_signal [N, C] float64, fs, n_sig, sig_len).
+def _read_record_scipy(signals_dir: str, base_name: str):
+    """Fallback без wfdb: scipy.io.loadmat + ручной разбор gain/baseline."""
+    from scipy.io import loadmat
 
-    Эквивалент wfdb.rdrecord(...).p_signal для пар .hea + .mat.
-    """
     hea_path = os.path.join(signals_dir, f"{base_name}.hea")
     mat_path = os.path.join(signals_dir, f"{base_name}.mat")
     fs, n_sig, sig_len, channels = _parse_hea(hea_path)
@@ -73,6 +81,19 @@ def read_record(signals_dir: str, base_name: str):
     baseline = np.array([c["baseline"] for c in channels], dtype=np.float64)[:, None]
     p_signal = (val - baseline) / gain  # [C, N] в физических единицах (мВ)
     return p_signal.T, fs, n_sig, sig_len  # [N, C], как у wfdb
+
+
+def read_record(signals_dir: str, base_name: str):
+    """Прочитать запись: (p_signal [N, C] float64, fs, n_sig, sig_len).
+
+    Основной путь — wfdb.rdrecord; если wfdb не установлен (serverless),
+    используется scipy-fallback с тем же контрактом возврата.
+    """
+    if _HAS_WFDB:
+        rec = wfdb.rdrecord(os.path.join(signals_dir, base_name))
+        p_signal = np.asarray(rec.p_signal, dtype=np.float64)  # [N, C]
+        return p_signal, float(rec.fs), int(rec.n_sig), int(rec.sig_len)
+    return _read_record_scipy(signals_dir, base_name)
 
 
 class ECGLoader:

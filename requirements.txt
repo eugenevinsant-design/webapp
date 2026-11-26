@@ -6,6 +6,7 @@ pydantic==2.10.4
 pydantic-settings==2.7.1
 numpy==2.2.1
 scipy==1.14.1
+wfdb==4.1.2  # Docker/сервер; в pyproject.toml не добавлять (лимит Vercel 250 МБ), там scipy-fallback
 python-multipart==0.0.20
 aiofiles==24.1.0
 markdown==3.7
