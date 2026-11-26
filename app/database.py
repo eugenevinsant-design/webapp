@@ -53,9 +53,14 @@ def _normalize_db_url(url: str) -> Tuple[str, Dict]:
     parts = urlparse(url)
     qs = dict(parse_qsl(parts.query))
     sslmode = qs.pop("sslmode", None) or qs.pop("ssl", None)
-    if sslmode is None:
+    # channel_binding — libpq-параметр (в строках Neon), asyncpg.connect
+    # его не принимает: TypeError: unexpected keyword argument.
+    # SCRAM-аутентификация и так идёт поверх ssl=True, поэтому просто
+    # выбрасываем параметр.
+    qs.pop("channel_binding", None)
+    if sslmode is None and not qs:
         return url, connect_args  # запрос-строку не трогали — возвращаем как есть
-    if sslmode.lower() not in ("disable", "false", "0"):
+    if sslmode and sslmode.lower() not in ("disable", "false", "0"):
         connect_args["ssl"] = True
     url = urlunparse(parts._replace(query=urlencode(qs)))
     return url, connect_args
