@@ -117,23 +117,35 @@ def _ensure_prompt_state_columns(sync_conn) -> None:
         cols.append("user_id")
         logger.info("Миграция: добавлена колонка prompt_states.user_id")
 
-    # Порядок уже целевой (или движок не SQLite) — ничего пересоздавать не надо
-    if cols == _PROMPT_STATES_COLUMN_ORDER or sync_conn.dialect.name != "sqlite":
+    # Порядок уже целевой — ничего пересоздавать не надо
+    if cols == _PROMPT_STATES_COLUMN_ORDER:
         return
 
-    logger.info("Миграция: пересоздаю prompt_states с целевым порядком колонок...")
-    sync_conn.execute(text("""
+    # Пересоздаём таблицу с целевым порядком (SQLite и PostgreSQL не умеют
+    # переупорядочивать колонки иначе). Данные (id строк) сохраняются.
+    dialect = sync_conn.dialect.name
+    if dialect == "postgresql":
+        id_col = "id SERIAL PRIMARY KEY"
+        fs_col = "fs DOUBLE PRECISION"
+        ts_col = "updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL"
+    else:  # sqlite
+        id_col = "id INTEGER NOT NULL PRIMARY KEY"
+        fs_col = "fs FLOAT"
+        ts_col = "updated_at DATETIME NOT NULL"
+
+    logger.info("Миграция: пересоздаю prompt_states с целевым порядком колонок (%s)...", dialect)
+    sync_conn.execute(text(f"""
         CREATE TABLE prompt_states_new (
-            id INTEGER NOT NULL PRIMARY KEY,
+            {id_col},
             user_id INTEGER REFERENCES users(id),
             session_id INTEGER NOT NULL UNIQUE REFERENCES sessions(id),
             question TEXT,
             current_raw_pkg_path VARCHAR(500),
-            fs FLOAT,
+            {fs_col},
             grade INTEGER,
             context TEXT,
             description TEXT,
-            updated_at DATETIME NOT NULL
+            {ts_col}
         )
     """))
     sync_conn.execute(text("""
@@ -153,6 +165,12 @@ def _ensure_prompt_state_columns(sync_conn) -> None:
     sync_conn.execute(text(
         "CREATE INDEX ix_prompt_states_user_id ON prompt_states (user_id)"
     ))
+    if dialect == "postgresql":
+        # Синхронизируем sequence после вставки строк с явными id
+        sync_conn.execute(text(
+            "SELECT setval(pg_get_serial_sequence('prompt_states','id'), "
+            "COALESCE((SELECT MAX(id) FROM prompt_states), 1))"
+        ))
     logger.info("Миграция: prompt_states пересоздана, порядок колонок обновлён")
 
 
