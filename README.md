@@ -79,3 +79,45 @@
 - Архитектура: `app/README_ARCHITECTURE.md`
 - Интеграция: `README_INTEGRATION.md`
 - GPU/LLM: `README_GPU.md`
+
+## ☁️ Демо-деплой на Vercel (без Docker)
+
+GitHub Pages не подходит: он хостит только статику, а нам нужны FastAPI и PostgreSQL.
+Vercel запускает всё целиком: фронтенд — как статика, бэкенд — как serverless-функция
+(`api/index.py` → `app.main:app`), БД — облачный PostgreSQL (Neon, бесплатный тариф).
+
+### Шаг 1. Neon (база данных)
+1. Зарегистрируйтесь на https://neon.tech и создайте проект.
+2. Скопируйте **pooled** строку подключения вида
+   `postgresql://user:pass@host-pooler.eu-central-1.aws.neon.tech/dbname?sslmode=require`
+   (драйвер и SSL подставятся автоматически — см. `_normalize_db_url` в `app/database.py`).
+
+### Шаг 2. Vercel
+1. Зарегистрируйтесь на https://vercel.com через GitHub.
+2. **Add New → Project → Import** этот репозиторий (ветка `ProductVesrsion0.3`).
+   Framework — **Other**, build-команды не нужны (`vercel.json` уже в репо).
+3. В **Settings → Environment Variables** задайте:
+
+   | Переменная | Значение |
+   |---|---|
+   | `DATABASE_URL` | строка подключения Neon из шага 1 |
+   | `LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
+   | `LLM_API_KEY` | ваш ключ OpenRouter (`sk-or-v1-...`) |
+   | `LLM_MODEL` | например `nvidia/nemotron-3-ultra-550b-a55b:free` |
+   | `PLATFORM_ACCESS_TOKEN` | токен-«пропуск» на платформу |
+   | `APP_ENV` | `prod` |
+
+4. **Deploy** → приложение доступно по адресу `https://<project>.vercel.app`.
+
+### Особенности serverless-режима (включается автоматически, `VERCEL=1`)
+- **БД без пула** (NullPool): соединение открывается на запрос и закрывается.
+- **Запись в `prompt_states` синхронная**: фоновый worker на serverless
+  замораживается между вызовами, поэтому после оценки пишем сразу
+  (`db_writer.write_now`, те же ретраи с backoff).
+- **Инициализация ленивая**: таблицы создаются на первом запросе (lifespan
+  на serverless не гарантирован).
+- **Память инстанса эфемерна**: незавершённая (неоценённая) сессия может
+  не пережить холодный старт — для демо это приемлемо; оценённые ответы
+  в БД сохраняются всегда.
+- **Таймаут функции** — 60 с (`maxDuration` в `vercel.json`): длинные
+  ответы LLM могут обрываться, при необходимости выберите быструю модель.

@@ -94,6 +94,15 @@ class DBWriter:
             snapshot.get("session_id"), snapshot.get("grade"), self._queue.qsize(),
         )
 
+    async def write_now(self, snapshot: Dict[str, Any]) -> None:
+        """Записать слепок немедленно, внутри текущего запроса.
+
+        Serverless-режим (Vercel): фоновый worker замораживается между
+        вызовами функции, поэтому очередь не используется — пишем сразу,
+        с теми же ретраями/backoff, что и у батч-записи.
+        """
+        await self._write_batch_with_retry([snapshot])
+
     async def wait_idle(self) -> None:
         """Дождаться обработки всех слепков в очереди (для тестов)."""
         await self._queue.join()

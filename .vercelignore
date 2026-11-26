@@ -1,0 +1,20 @@
+# Не тащим в serverless-функцию лишнее (лимит размера/скорость деплоя)
+.git
+.venv
+venv
+.pytest_cache
+.vscode
+webapp.egg-info
+build
+tests
+alembic
+__pycache__
+*.pyc
+dev.db
+.env
+.env.example
+*.md
+!README.md
+docker-compose.yml
+Dockerfile
+.dockerignore

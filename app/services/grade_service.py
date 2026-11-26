@@ -21,6 +21,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.llm_client import LLMError
+from app.config import settings
 from app.infrastructure import nn_pipeline
 from app.schemas.chat import ChatResponse
 from app.services.db_writer import db_writer
@@ -67,9 +68,14 @@ async def set_grade(db: AsyncSession, user_id: int, session_id: int, response_id
         state.touch()
 
         # Асинхронная запись в БД: user_id + session_id + весь слепок.
-        # Эндпоинт не ждёт commit — запись выполнит фоновый worker
-        # (батч + ретраи -> ничего не теряется даже при пиковой нагрузке).
-        db_writer.enqueue(state.snapshot())
+        # Обычный режим: эндпоинт не ждёт commit — запись выполнит фоновый
+        # worker (батч + ретраи -> ничего не теряется при пиковой нагрузке).
+        # Serverless (Vercel): worker между вызовами заморожен, поэтому
+        # пишем синхронно, внутри запроса (те же ретраи с backoff).
+        if settings.is_serverless:
+            await db_writer.write_now(state.snapshot())
+        else:
+            db_writer.enqueue(state.snapshot())
         logger.info(
             "Оценка %s/10 поставлена в очередь записи (user_id=%s, session_id=%s)",
             grade, user_id, session_id,

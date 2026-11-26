@@ -1,23 +1,18 @@
+# Runtime-зависимости (одни и те же для Docker и Vercel serverless).
+# Тесты и инструменты разработки — в requirements-dev.txt.
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
 pydantic-settings==2.7.1
-wfdb==4.1.2
-pandas==2.2.3
 numpy==2.2.1
 scipy==1.14.1
 python-multipart==0.0.20
 aiofiles==24.1.0
 markdown==3.7
 httpx==0.28.1
+requests==2.32.3
 openai>=1.50,<4
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
-alembic==1.14.0
-python-dotenv==1.0.1
-
-# Тестирование
-pytest==8.3.4
-pytest-asyncio==0.25.2
 aiosqlite==0.20.0
-
+python-dotenv==1.0.1

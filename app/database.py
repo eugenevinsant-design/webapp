@@ -19,7 +19,8 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
 )
 from sqlalchemy.orm import declarative_base
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Dict, Tuple
+from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 import logging
 
 from app.config import settings
@@ -29,24 +30,66 @@ logger = logging.getLogger(__name__)
 # Базовый класс для моделей (используется в models_db.py)
 Base = declarative_base()
 
+
+def _normalize_db_url(url: str) -> Tuple[str, Dict]:
+    """Привести DATABASE_URL к виду, понятному SQLAlchemy+asyncpg.
+
+    Облачные Postgres (Neon/Supabase/Vercel Postgres) отдают строки вида
+    postgresql://...?sslmode=require — без драйвера и с libpq-параметром
+    sslmode, который asyncpg как kwarg не принимает. Поэтому:
+    - postgres:// / postgresql:// -> postgresql+asyncpg://
+    - sslmode/ssl (не disable) выносим в connect_args={"ssl": True}
+
+    SQLite-строки возвращаются как есть (urlunparse ломает ':///...').
+    """
+    connect_args: Dict = {}
+    if url.startswith("sqlite"):
+        return url, connect_args
+    if url.startswith("postgres://"):
+        url = "postgresql+asyncpg://" + url[len("postgres://"):]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+
+    parts = urlparse(url)
+    qs = dict(parse_qsl(parts.query))
+    sslmode = qs.pop("sslmode", None) or qs.pop("ssl", None)
+    if sslmode is None:
+        return url, connect_args  # запрос-строку не трогали — возвращаем как есть
+    if sslmode.lower() not in ("disable", "false", "0"):
+        connect_args["ssl"] = True
+    url = urlunparse(parts._replace(query=urlencode(qs)))
+    return url, connect_args
+
+
+_db_url, _connect_args = _normalize_db_url(settings.DATABASE_URL)
+
 # Async-движок с пулом соединений
 # echo=False — не логировать каждый SQL-запрос (в prod включим при необходимости)
 #
 # SQLite (локальная разработка/тесты) не поддерживает pool_size/max_overflow —
 # там используется NullPool/StaticPool. Для PostgreSQL параметры пула валидны.
-_is_sqlite = settings.DATABASE_URL.startswith("sqlite")
+_is_sqlite = _db_url.startswith("sqlite")
 _engine_kwargs = {
     "echo": False,
     "pool_pre_ping": True,  # проверять соединение перед использованием (отказоустойчивость)
 }
-if not _is_sqlite:
+if _connect_args:
+    _engine_kwargs["connect_args"] = _connect_args
+
+if settings.is_serverless:
+    # Serverless (Vercel): функции эфемерны, держать пул соединений нельзя —
+    # каждое обращение открывает и закрывает своё соединение (NullPool).
+    from sqlalchemy.pool import NullPool
+    _engine_kwargs["poolclass"] = NullPool
+    logger.info("Serverless-режим: пул соединений БД = NullPool")
+elif not _is_sqlite:
     _engine_kwargs.update(
         pool_size=settings.POOL_SIZE,
         max_overflow=settings.MAX_OVERFLOW,
         pool_recycle=3600,  # пересоздавать соединения раз в час (избегать таймаутов)
     )
 
-engine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs)
+engine = create_async_engine(_db_url, **_engine_kwargs)
 
 # Фабрика сессий
 # expire_on_commit=False — чтобы после commit() объекты оставались доступны

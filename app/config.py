@@ -13,6 +13,8 @@
     print(settings.SIGNALS_DIR)
 """
 
+import os
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, field_validator
 from typing import List, Literal
@@ -29,6 +31,12 @@ class Settings(BaseSettings):
 
     # Режим работы: dev (с --reload) или prod (без --reload)
     APP_ENV: Literal["dev", "prod"] = "dev"
+
+    # Serverless (Vercel): без фоновых worker'ов и пула соединений
+    SERVERLESS: bool = Field(
+        default=False,
+        description="True — serverless-режим (Vercel): синхронная запись в БД, NullPool"
+    )
 
     # Подключение к БД. PostgreSQL (asyncpg) для prod:
     # postgresql+asyncpg://ecg_user:ecg_password@localhost:5432/ecg_analyzer
@@ -123,6 +131,11 @@ class Settings(BaseSettings):
     def parse_origins(cls, v: str) -> str:
         """Оставляем строку как есть, парсинг в список — в свойстве ниже."""
         return v
+
+    @property
+    def is_serverless(self) -> bool:
+        """Serverless-режим: SERVERLESS=1 в env или платформа Vercel (VERCEL=1)."""
+        return self.SERVERLESS or os.environ.get("VERCEL") == "1"
 
     @property
     def allowed_origins_list(self) -> List[str]:

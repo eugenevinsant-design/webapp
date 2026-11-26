@@ -1,12 +1,79 @@
+"""
+Загрузчик ЭКГ-сигналов (.hea + .mat).
+
+WFDB-совместимый формат: текстовый заголовок .hea + матрица 'val' в .mat.
+Читаем напрямую через scipy.io.loadmat + минимальный парсер .hea —
+это численно идентично wfdb.rdrecord (p_signal = (val - baseline) / adc_gain),
+но не тянет wfdb/pandas/matplotlib (~150 МБ), что критично для
+serverless-деплоя (лимит Vercel — 250 МБ на функцию).
+
+Формат первой строки .hea:
+    <name> <n_sig> <fs> <sig_len> ...
+Формат строки канала:
+    <file> <format> <adc_gain>[(<baseline>)]/<units> <adc_res> <adc_zero> ...
+Пример: JS00002.mat 16+24 1000/mV 16 0 -10 12346 0 I
+        -> adc_gain=1000, adc_zero=0 -> p_signal = (val - 0) / 1000
+"""
+
 import os
 import glob
-import wfdb
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
+
 import numpy as np
+from scipy.io import loadmat
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_hea(hea_path: str) -> Tuple[float, int, int, List[Dict[str, Any]]]:
+    """Разобрать WFDB-заголовок: (fs, n_sig, sig_len, per-channel gain/baseline)."""
+    with open(hea_path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = [
+            ln.strip() for ln in f
+            if ln.strip() and not ln.lstrip().startswith("#")
+        ]
+    if not lines:
+        raise ValueError(f"Пустой .hea: {hea_path}")
+
+    first = lines[0].split()
+    n_sig = int(first[1])
+    fs = float(first[2].split("/")[0])
+    sig_len = int(first[3].split("/")[0])
+
+    channels = []
+    for ln in lines[1:1 + n_sig]:
+        parts = ln.split()
+        gain_field = parts[2] if len(parts) > 2 else "1"
+        baseline = None
+        if "(" in gain_field:  # формат gain(baseline)/units
+            gain_field, rest = gain_field.split("(", 1)
+            baseline = float(rest.split(")")[0])
+        gain = float(gain_field.split("/")[0])
+        adc_zero = float(parts[4]) if len(parts) > 4 else 0.0
+        channels.append({
+            "gain": gain,
+            "baseline": baseline if baseline is not None else adc_zero,
+        })
+    return fs, n_sig, sig_len, channels
+
+
+def read_record(signals_dir: str, base_name: str):
+    """Прочитать запись: (p_signal [N, C] float64, fs, n_sig, sig_len).
+
+    Эквивалент wfdb.rdrecord(...).p_signal для пар .hea + .mat.
+    """
+    hea_path = os.path.join(signals_dir, f"{base_name}.hea")
+    mat_path = os.path.join(signals_dir, f"{base_name}.mat")
+    fs, n_sig, sig_len, channels = _parse_hea(hea_path)
+
+    val = loadmat(mat_path)["val"].astype(np.float64)  # [C, N] в АЦП-единицах
+    gain = np.array([c["gain"] for c in channels], dtype=np.float64)[:, None]
+    baseline = np.array([c["baseline"] for c in channels], dtype=np.float64)[:, None]
+    p_signal = (val - baseline) / gain  # [C, N] в физических единицах (мВ)
+    return p_signal.T, fs, n_sig, sig_len  # [N, C], как у wfdb
+
 
 class ECGLoader:
     def __init__(self, signals_dir="./data/signals"):
@@ -15,49 +82,47 @@ class ECGLoader:
         logger.info(f"📂 Загрузчик ЭКГ инициализирован: {signals_dir}")
         self._cache = []
         self._last_scan = None
-    
+
     def scan_signals(self, force: bool = False) -> List[Dict[str, Any]]:
         """Сканирование папки с .hea + .mat файлами"""
-        
+
         if not force and self._cache and self._last_scan:
             return self._cache
-        
+
         signals = []
-        
+
         if not os.path.exists(self.signals_dir):
             logger.warning(f"⚠️ Папка {self.signals_dir} не существует")
             return []
-        
+
         hea_files = glob.glob(os.path.join(self.signals_dir, "*.hea"))
         logger.info(f"🔍 Найдено .hea файлов: {len(hea_files)}")
-        
+
         for idx, hea_path in enumerate(hea_files, 1):
             try:
                 file_name = os.path.basename(hea_path)
                 base_name = os.path.splitext(file_name)[0]
-                
+
                 # Ищем .mat файл вместо .dat
                 mat_path = os.path.join(self.signals_dir, f"{base_name}.mat")
-                
+
                 if not os.path.exists(mat_path):
                     logger.warning(f"⚠️ Нет .mat для {base_name}, пропускаем")
                     continue
-                
-                # Читаем через wfdb
+
+                # Метаданные читаем только из заголовка — быстро, без
+                # загрузки всей матрицы сигнала
                 try:
-                    record = wfdb.rdrecord(os.path.join(self.signals_dir, base_name))
-                    fs = record.fs
-                    n_sig = record.n_sig
-                    sig_len = record.sig_len
+                    fs, n_sig, sig_len, _ = _parse_hea(hea_path)
                     duration = sig_len / fs if fs else None
                 except Exception as e:
                     logger.warning(f"⚠️ Ошибка чтения {base_name}: {e}")
                     fs = None
                     n_sig = None
                     duration = None
-                
+
                 file_size = os.path.getsize(hea_path) + os.path.getsize(mat_path)
-                
+
                 signals.append({
                     "id": idx,
                     "name": base_name,
@@ -70,18 +135,18 @@ class ECGLoader:
                     "size_kb": round(file_size / 1024, 1),
                     "signal_type": "ecg"
                 })
-                
+
                 logger.info(f"✅ Загружен: {file_name} (fs={fs}Hz)")
-                
+
             except Exception as e:
                 logger.error(f"❌ Ошибка загрузки {hea_path}: {e}")
-        
+
         self._cache = signals
         self._last_scan = datetime.now()
-        
+
         logger.info(f"📊 Всего загружено: {len(signals)} сигналов")
         return signals
-    
+
     def get_signal_data(self, signal_id: int, max_points: int = 1000):
         """Получить данные сигнала для отображения"""
         signals = self.scan_signals()
@@ -90,26 +155,26 @@ class ECGLoader:
             if s["id"] == signal_id:
                 signal = s
                 break
-        
+
         if not signal:
             return None
-        
+
         try:
             base_name = signal["name"]
-            record = wfdb.rdrecord(os.path.join(self.signals_dir, base_name))
-            
-            data = record.p_signal[:, 0].tolist() if record.p_signal is not None else []
-            
+            p_signal, fs, _, _ = read_record(self.signals_dir, base_name)
+
+            data = p_signal[:, 0].tolist() if p_signal is not None else []
+
             if len(data) > max_points:
                 step = len(data) // max_points
                 data = data[::step][:max_points]
-            
+
             return {
                 "signal_id": signal_id,
                 "name": signal["name"],
-                "fs": record.fs,
+                "fs": fs,
                 "data": data,
-                "total_points": len(record.p_signal) if record.p_signal is not None else 0
+                "total_points": len(p_signal) if p_signal is not None else 0
             }
         except Exception as e:
             logger.error(f"Ошибка чтения данных: {e}")
@@ -117,7 +182,7 @@ class ECGLoader:
 
     def load_raw_signal(self, pkg_name: str) -> tuple:
         """
-        Загрузить полный 12-канальный сигнал через wfdb.
+        Загрузить полный 12-канальный сигнал.
 
         Используется для передачи в NN-пайплайн (требование ТЗ:
         "12-канальная временная запись").
@@ -132,16 +197,15 @@ class ECGLoader:
                    Если файл не найден или ошибка — (None, None).
         """
         try:
-            record = wfdb.rdrecord(os.path.join(self.signals_dir, pkg_name))
-            if record.p_signal is None:
+            p_signal, fs, _, _ = read_record(self.signals_dir, pkg_name)
+            if p_signal is None:
                 logger.warning(f"⚠️ Нет p_signal для {pkg_name}")
                 return None, None
-            raw = record.p_signal  # wfdb: [N_samples, n_sig]
-            # Контракт пайплайна — [C, N]. wfdb отдаёт [N, C], поэтому
+            raw = p_signal  # [N_samples, n_sig]
+            # Контракт пайплайна — [C, N]. Файл отдаёт [N, C], поэтому
             # приводим к [C, N] здесь, на границе загрузки (единая точка).
             if raw.ndim == 2:
                 raw = raw.T
-            fs = record.fs
             logger.info(f"📥 Загружен raw: {pkg_name} (shape={raw.shape}, fs={fs})")
             return raw, fs
         except Exception as e:

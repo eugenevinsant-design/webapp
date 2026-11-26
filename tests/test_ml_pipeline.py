@@ -77,15 +77,15 @@ def test_signal_analyzer_transposed_input_does_not_crash():
 
 
 def test_ecg_loader_returns_c_by_n(monkeypatch):
-    """load_raw_signal обязан отдавать [C, N], даже если wfdb даёт [N, C]."""
-    from app.core.ecg_loader import ECGLoader
+    """load_raw_signal обязан отдавать [C, N], хотя файл хранит [N, C]."""
+    from app.core import ecg_loader as loader_mod
 
-    class FakeRecord:
-        p_signal = np.zeros((5000, 12), dtype=np.float32)  # как wfdb: [N, C]
-        fs = 500.0
+    def fake_read_record(signals_dir, base_name):
+        # read_record отдаёт [N, C], как p_signal из wfdb
+        return np.zeros((5000, 12), dtype=np.float32), 500.0, 12, 5000
 
-    loader = ECGLoader(signals_dir=SIGNALS_DIR)
-    monkeypatch.setattr("wfdb.rdrecord", lambda *a, **k: FakeRecord())
+    loader = loader_mod.ECGLoader(signals_dir=SIGNALS_DIR)
+    monkeypatch.setattr(loader_mod, "read_record", fake_read_record)
 
     raw, fs = loader.load_raw_signal("whatever")
     assert fs == 500.0
