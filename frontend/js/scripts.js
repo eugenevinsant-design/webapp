@@ -554,7 +554,14 @@ async function handleRegister() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, platform_token: getPlatformToken() })
     });
-    if (res.status === 403) throw new Error('Токен платформы недействителен. Обновите страницу.');
+    if (res.status === 403) {
+      // Сохранённый токен платформы протух/отозван: сбрасываем его
+      // и возвращаем пользователя на шаг ввода токена платформы.
+      localStorage.removeItem('platform_token');
+      showAuthStep('platform');
+      showAuthError('Токен платформы недействителен. Введите актуальный токен доступа.');
+      return;
+    }
     if (!res.ok) throw new Error('Ошибка регистрации: ' + res.status);
     const data = await res.json();
 
