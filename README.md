@@ -52,6 +52,62 @@
 2. В `.env` раскомментируйте `DATABASE_URL=sqlite+aiosqlite:///./dev.db` и задайте hosted LLM (как в варианте B).
 3. `.venv\Scripts\python.exe -m uvicorn app.main:app` → `http://localhost:8000`
 
+## 🚢 Деплой на сервер (production, Docker)
+
+Полноценная серверная версия (ветка `server`, она же `main`): FastAPI + PostgreSQL + **wfdb** для чтения ЭКГ, LLM — через внешний API, без подгрузки весов нейросети.
+
+**Требования:** Docker Engine 24+ с Compose v2, 2 ГБ RAM, ~2 ГБ на диске, доступ в интернет (вызовы LLM API).
+
+```bash
+git clone -b server https://github.com/eugenevinsant-design/webapp.git
+cd webapp
+cp .env.example .env   # заполнить (см. таблицу ниже)
+docker compose up -d --build
+```
+
+Поднимаются `ecg_backend` (порт 8000) и `ecg_postgres` (5432). Таблицы БД и токен платформы создаются автоматически при старте. Первая сборка — 3–5 минут.
+
+**Обязательные переменные `.env`:**
+
+| Переменная | Что указать |
+|---|---|
+| `LLM_BASE_URL` | `https://openrouter.ai/api/v1` (или адрес своего vLLM) |
+| `LLM_MODEL` | например `nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `LLM_API_KEY` | ключ провайдера |
+| `PLATFORM_ACCESS_TOKEN` | токен-«пропуск» на платформу |
+| `SECRET_KEY` | длинная случайная строка |
+
+> `DATABASE_URL` в `.env` не трогать: контейнер бэкенда всегда пишет в сервис `postgres` по внутренней сети (переопределено в `docker-compose.yml`).
+
+**Проверка после запуска:**
+
+```bash
+docker ps                          # оба контейнера (healthy)
+curl http://localhost:8000/health  # {"status":"healthy"}
+curl http://localhost:8000/api/ecg/    # список сигналов JS00002, JS00004
+docker exec ecg_backend python -c "from app.core import ecg_loader as L; print(L._HAS_WFDB)"  # True
+curl http://localhost:8000/api/chat/llm-status   # configured:true, api_key_set:true
+```
+
+**Обновление версии на сервере:**
+
+```bash
+git pull origin server
+docker compose up -d --build   # данные в БД сохраняются (volume postgres_data)
+```
+
+**Диагностика:**
+
+| Симптом | Причина / решение |
+|---|---|
+| `port is already allocated` | порт 8000/5432 занят → поменять `BACKEND_PORT`/`POSTGRES_PORT` в `.env` |
+| 503 «LLM-сервис недоступен» | проверить `LLM_BASE_URL`/`LLM_API_KEY`, лимиты провайдера, интернет с сервера |
+| Пустой список сигналов | положить пары `.hea` + `.mat` в `./data/signals` (смонтирована в контейнер) |
+| Логи бэкенда | `docker logs -f ecg_backend` |
+| Пересоздать БД с нуля | `docker compose down -v` (**данные потеряются**) + `up -d` |
+
+Полная версия этой инструкции — в `DEPLOY.md`.
+
 ## 🔐 Вход на платформу (3 шага)
 
 1. **Токен платформы** — введите значение `PLATFORM_ACCESS_TOKEN` из `.env` (токены хранятся в таблице `platform_tokens`, можно добавлять/отзывать).
@@ -76,6 +132,7 @@
 
 ## 📄 Документация
 
+- Деплой на сервер: `DEPLOY.md` (полная проверенная инструкция)
 - Архитектура: `app/README_ARCHITECTURE.md`
 - Интеграция: `README_INTEGRATION.md`
 - GPU/LLM: `README_GPU.md`
@@ -94,8 +151,11 @@ Vercel запускает всё целиком: фронтенд — как с�
 
 ### Шаг 2. Vercel
 1. Зарегистрируйтесь на https://vercel.com через GitHub.
-2. **Add New → Project → Import** этот репозиторий (ветка `ProductVesrsion0.3`).
-   Framework — **Other**, build-команды не нужны (`vercel.json` уже в репо).
+2. **Add New → Project → Import** этот репозиторий (ветка `vercel-demo`).
+   Framework — **FastAPI**, build-команды не нужны (`vercel.json` уже в репо).
+   > На Vercel зависимости ставятся из `pyproject.toml` (slim-набор без
+   > wfdb/pandas/matplotlib — лимит serverless-функции 250 МБ);
+   > чтение ЭКГ там идёт через scipy-fallback, поведение идентично.
 3. В **Settings → Environment Variables** задайте:
 
    | Переменная | Значение |
