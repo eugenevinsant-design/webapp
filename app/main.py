@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="ECG Analyzer API",
     description="API для анализа ЭКГ сигналов (.hea + .dat)",
-    version="2.0.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
